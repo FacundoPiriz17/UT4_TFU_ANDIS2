@@ -1,0 +1,110 @@
+x-api-common: &api-common
+  build:
+    context: .
+    dockerfile: dockerfile
+
+  image: ${API_IMAGE:-api:1.0}
+
+  env_file:
+    - .env
+
+  environment: &api-environment
+    MYSQL_HOST: db
+    MYSQL_PORT: 3306
+    MYSQL_DATABASE: ${MYSQL_DATABASE:-db_games}
+    MYSQL_USER: ${MYSQL_USER:-db_user}
+    MYSQL_PASSWORD: ${MYSQL_PASSWORD:-db_password}
+
+    # Ambas instancias escriben sobre el mismo volumen de auditoría
+    AUDIT_LOG_PATH: /app/logs/operaciones.txt
+
+  depends_on:
+    db:
+      condition: service_healthy
+
+  expose:
+    - '8000'
+
+  volumes:
+    - audit_logs:/app/logs
+
+  healthcheck:
+    test:
+      [
+        'CMD',
+        'python',
+        '-c',
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+      ]
+    interval: 5s
+    timeout: 3s
+    retries: 5
+    start_period: 5s
+
+  restart: unless-stopped
+
+services:
+  api1:
+    <<: *api-common
+    environment:
+      <<: *api-environment
+      INSTANCE_NAME: api1.0
+
+  api2:
+    <<: *api-common
+    environment:
+      <<: *api-environment
+      INSTANCE_NAME: api2.0
+
+  nginx:
+    image: nginx:alpine
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/health']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    ports:
+      - '8000:80'
+
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+
+    depends_on:
+      api1:
+        condition: service_healthy
+      api2:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.4
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-db_games}
+      MYSQL_USER: ${MYSQL_USER:-db_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-db_password}
+
+    volumes:
+      - mysqldata:/var/lib/mysql
+      - ./bd/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./bd/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent && mysql -h localhost -u root -p$$MYSQL_ROOT_PASSWORD -D $$MYSQL_DATABASE -e 'SELECT 1 FROM Login LIMIT 1' --silent",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+    restart: unless-stopped
+
+volumes:
+  mysqldata:
+  audit_logs:
