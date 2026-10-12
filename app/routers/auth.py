@@ -1,31 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
-from app.aspects.audit import auditar
-from app.database import get_db
-from app.models import Login
-from app.schemas import LoginRequest
-from security.jwt import crear_token
-from security.password import verificar_contrasena
+from security.dependencies import Identidad, obtener_usuario_actual
+from security.oidc import audience, issuer
 
 router = APIRouter(prefix="/auth", tags=["Autenticacion"])
 
 
-@router.post("/login")
-@auditar("LOGIN")
-def login(datos: LoginRequest, db: Session = Depends(get_db)):
-    credenciales = db.get(Login, datos.email)
+@router.post("/login", deprecated=True)
+def login():
+    raise HTTPException(410, "Login local retirado; obtenga un access token en Keycloak")
 
-    if credenciales is None or not verificar_contrasena(
-        datos.contrasena,
-        credenciales.ContrasenaLogin,
-    ):
-        raise HTTPException(
-            status_code=401,
-            detail="Credenciales invalidas",
-        )
 
-    return {
-        "access_token": crear_token(datos.email),
-        "token_type": "bearer",
-    }
+@router.get("/config")
+def configuracion():
+    return {"issuer": issuer(), "audience": audience(), "flow": "authorization_code_pkce"}
+
+
+@router.get("/me")
+def identidad(usuario: Identidad = Depends(obtener_usuario_actual)):
+    return {"sub": usuario.sub, "email": usuario.email, "roles": sorted(usuario.roles)}

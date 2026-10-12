@@ -7,8 +7,7 @@ from app.aspects.audit import auditar
 from app.database import get_db
 from app.models import Login, Persona
 from app.schemas import PersonaCreate, PersonaUpdate
-from security.dependencies import obtener_usuario_actual
-from security.password import hashear_contrasena
+from security.dependencies import Identidad, autorizar_persona, obtener_usuario_actual, requerir_admin
 
 router = APIRouter(
     prefix="/personas",
@@ -25,7 +24,7 @@ def _respuesta(persona: Persona):
     }
 
 
-@router.get("")
+@router.get("", dependencies=[Depends(requerir_admin)])
 def listar_personas(
     db: Session = Depends(get_db),
 ):
@@ -45,7 +44,9 @@ def listar_personas(
 def obtener_persona(
     email: str,
     db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
 ):
+    autorizar_persona(usuario, email, db)
     persona = db.get(Persona, email)
 
     if persona is None:
@@ -57,7 +58,7 @@ def obtener_persona(
     return _respuesta(persona)
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(requerir_admin)])
 @auditar("INSERTAR_PERSONA")
 def crear_persona(
     datos: PersonaCreate,
@@ -75,17 +76,8 @@ def crear_persona(
         ApellidoPersona=datos.apellido,
     )
 
-    credenciales = Login(
-        EmailPersona=datos.email,
-        ContrasenaLogin=hashear_contrasena(
-            datos.contrasena
-        ),
-    )
-
     try:
         db.add(persona)
-        db.flush()
-        db.add(credenciales)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -107,7 +99,9 @@ def actualizar_persona(
     email: str,
     datos: PersonaUpdate,
     db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
 ):
+    autorizar_persona(usuario, email, db)
     persona = db.get(Persona, email)
 
     if persona is None:
@@ -129,7 +123,7 @@ def actualizar_persona(
     }
 
 
-@router.delete("/{email}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{email}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(requerir_admin)])
 @auditar("ELIMINAR_PERSONA")
 def eliminar_persona(
     email: str,
@@ -144,6 +138,9 @@ def eliminar_persona(
         )
 
     try:
+        # Se conservan las filas históricas Login, pero al eliminar el perfil
+        # deben retirarse en la misma transacción para respetar la FK heredada.
+        db.query(Login).filter(Login.EmailPersona == email).delete()
         db.delete(persona)
         db.commit()
         cache.invalidar_persona(email)

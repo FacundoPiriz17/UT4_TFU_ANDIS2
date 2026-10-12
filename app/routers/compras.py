@@ -4,14 +4,14 @@ from sqlalchemy.orm import Session
 from app import cache
 from app.aspects.audit import auditar
 from app.database import get_db
-from app.schemas import CompraCreate, CompraUpdate
-from app.services.compras import (
+from app.schemas import CompraCreate, CompraUpdate, CompraLectura, ResumenCompras
+from app.services.compras_commands import (
     crear_compra,
     eliminar_compra,
     recalcular_compra,
-    _buscar_compras,
 )
-from security.dependencies import obtener_usuario_actual
+from app.services import compras_queries
+from security.dependencies import Identidad, autorizar_persona, obtener_usuario_actual
 
 router = APIRouter(
     prefix="/compras",
@@ -30,20 +30,29 @@ def _respuesta(compra, politica: str | None = None):
     }
 
 
-@router.get("/{email_persona}")
+@router.get("/{email_persona}", response_model=list[CompraLectura])
 def listar_compras(
     email_persona: str,
     response: Response,
     db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
 ):
+    autorizar_persona(usuario, email_persona, db)
     return cache.obtener_o_cargar(
         cache.clave_compras(email_persona),
-        lambda: [
-            _respuesta(compra)
-            for compra in _buscar_compras(db, email_persona)
-        ],
+        lambda: compras_queries.listar_compras(db, email_persona),
         response,
     )
+
+
+@router.get("/{email_persona}/resumen", response_model=ResumenCompras)
+def resumen_compras(
+    email_persona: str,
+    db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
+):
+    autorizar_persona(usuario, email_persona, db)
+    return compras_queries.resumir_compras(db, email_persona)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -51,7 +60,9 @@ def listar_compras(
 def generar_compra(
     datos: CompraCreate,
     db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
 ):
+    autorizar_persona(usuario, datos.email_persona, db)
     compra = crear_compra(
         db=db,
         email_persona=datos.email_persona,
@@ -70,7 +81,9 @@ def actualizar_compra(
     id_juego: int,
     datos: CompraUpdate,
     db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
 ):
+    autorizar_persona(usuario, email_persona, db)
     compra = recalcular_compra(
         db=db,
         email_persona=email_persona,
@@ -91,7 +104,9 @@ def borrar_compra(
     email_persona: str,
     id_juego: int,
     db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
 ):
+    autorizar_persona(usuario, email_persona, db)
     eliminar_compra(
         db=db,
         email_persona=email_persona,

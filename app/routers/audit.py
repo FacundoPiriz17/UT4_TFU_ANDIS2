@@ -3,12 +3,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 
 from app.aspects.audit import LOG_PATH
-from security.dependencies import obtener_usuario_actual
+from security.dependencies import requerir_admin
 
 router = APIRouter(
     prefix="/auditoria",
     tags=["Auditoria"],
-    dependencies=[Depends(obtener_usuario_actual)],
+    dependencies=[Depends(requerir_admin)],
 )
 
 

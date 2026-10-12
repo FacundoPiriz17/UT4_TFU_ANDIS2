@@ -1,7 +1,7 @@
 # Override: docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build
 services:
   api1:
-    image: api:dev
+    image: ut4-segrend-api:dev
     build:
       args:
         API_VERSION: dev
@@ -11,7 +11,7 @@ services:
       - audit_logs:/app/logs
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
   api2:
-    image: api:dev
+    image: ut4-segrend-api:dev
     build:
       args:
         API_VERSION: dev
