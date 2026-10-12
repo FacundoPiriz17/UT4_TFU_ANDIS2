@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import cache
 from app.aspects.audit import auditar
 from app.database import get_db
-from app.models import Genero, Juego, JuegoTieneGenero
+from app.models import Copia, Genero, Juego, JuegoTieneGenero
 from app.schemas import JuegoCreate, JuegoUpdate
+from app.services.juegos import listar_juegos, obtener_juego
 from security.dependencies import obtener_usuario_actual
 
 router = APIRouter(
@@ -53,6 +55,45 @@ def _asignar_generos(
             )
 
 
+def _invalidar_juego(db: Session, id_juego: int) -> None:
+    # Las bibliotecas embeben nombre y generos del juego.
+    duenos = (
+        db.query(Copia.EmailPersona)
+        .filter(Copia.IdJuego == id_juego)
+        .all()
+    )
+    cache.invalidar(
+        cache.CLAVE_CATALOGO,
+        cache.clave_juego(id_juego),
+        *(cache.clave_biblioteca(email) for (email,) in duenos),
+    )
+
+
+@router.get("")
+def catalogo(
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    return cache.obtener_o_cargar(
+        cache.CLAVE_CATALOGO,
+        lambda: listar_juegos(db),
+        response,
+    )
+
+
+@router.get("/{id_juego}")
+def detalle_juego(
+    id_juego: int,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    return cache.obtener_o_cargar(
+        cache.clave_juego(id_juego),
+        lambda: obtener_juego(db, id_juego),
+        response,
+    )
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 @auditar("INSERTAR_JUEGO")
 def crear_juego(
@@ -66,6 +107,7 @@ def crear_juego(
     _asignar_generos(db, juego.IdJuego, datos.generos)
 
     db.commit()
+    cache.invalidar(cache.CLAVE_CATALOGO)
     db.refresh(juego)
 
     return {
@@ -105,6 +147,7 @@ def actualizar_juego(
         )
 
     db.commit()
+    _invalidar_juego(db, id_juego)
     db.refresh(juego)
 
     return {
@@ -130,6 +173,10 @@ def eliminar_juego(
     try:
         db.delete(juego)
         db.commit()
+        cache.invalidar(
+            cache.CLAVE_CATALOGO,
+            cache.clave_juego(id_juego),
+        )
     except IntegrityError:
         db.rollback()
         raise HTTPException(

@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app import cache
 from app.models import Compra, Copia, Juego, Persona
 from app.strategies.costo_compra import obtener_estrategia
 
@@ -78,6 +79,7 @@ def crear_compra(
     except Exception:
         db.rollback()
         raise
+    cache.invalidar_persona(email_persona)
     db.refresh(compra)
 
     return compra
@@ -106,6 +108,7 @@ def recalcular_compra(
     compra.CostoCompra = estrategia.calcular(costo_base)
 
     db.commit()
+    cache.invalidar_persona(email_persona)
     db.refresh(compra)
 
     return compra
@@ -143,3 +146,4 @@ def eliminar_compra(
         db.delete(copia)
 
     db.commit()
+    cache.invalidar_persona(email_persona)

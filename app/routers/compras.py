@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
+from app import cache
 from app.aspects.audit import auditar
 from app.database import get_db
 from app.schemas import CompraCreate, CompraUpdate
@@ -32,17 +33,19 @@ def _respuesta(compra, politica: str | None = None):
 @router.get("/{email_persona}")
 def listar_compras(
     email_persona: str,
+    response: Response,
     db: Session = Depends(get_db),
 ):
+    return cache.obtener_o_cargar(
+        cache.clave_compras(email_persona),
+        lambda: [
+            _respuesta(compra)
+            for compra in _buscar_compras(db, email_persona)
+        ],
+        response,
+    )
 
-    compras = _buscar_compras(db, email_persona)
 
-    return [
-        _respuesta(compra)
-        for compra in compras
-    ]
-    
-    
 @router.post("", status_code=status.HTTP_201_CREATED)
 @auditar("GENERAR_COMPRA")
 def generar_compra(

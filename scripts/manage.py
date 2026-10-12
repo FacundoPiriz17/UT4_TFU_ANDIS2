@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
-SERVICES = ("db", "api1", "api2", "nginx")
+SERVICES = ("db", "redis", "api1", "api2", "nginx")
 EXPECTED = {"api1.0", "api2.0"}
 STATE = ROOT / ".deploy/current_version"
 
@@ -130,7 +130,7 @@ def start():
     build()
     os.environ["API_IMAGE"] = "api:1.0"
     compose("up", "-d", "--no-build")
-    wait(("db", "api1", "api2"))
+    wait(("db", "redis", "api1", "api2"))
     compose("restart", "nginx")
     ready("1.0")
     STATE.write_text("1.0\n")

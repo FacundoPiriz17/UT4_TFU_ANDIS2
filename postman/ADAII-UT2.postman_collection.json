@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "adaii-ut2-architecture-demo",
     "name": "ADAII UT2 - Rollback, Polimorfismo y Aspectos",
-    "description": "Coleccion para probar la API REST y demostrar las tacticas de arquitectura. Ejecutar Login primero para guardar automaticamente el JWT. token y juegoId se guardan en variables de coleccion; el entorno solo configura la URL y las credenciales. Ejecutar POST /juegos antes de actualizar o eliminar el juego creado.",
+    "description": "Coleccion para probar la API REST y demostrar las tacticas de arquitectura. Ejecutar Login primero para guardar automaticamente el JWT. token y juegoId se guardan en variables de coleccion; el entorno solo configura la URL y las credenciales. Ejecutar POST /juegos antes de actualizar o eliminar el juego creado. Las lecturas de juegos, compras y biblioteca usan cache-aside con Redis: el header X-Cache indica HIT o MISS. La carpeta 'Cache-aside - Demo' muestra el ciclo completo y se ejecuta en orden.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -25,6 +25,10 @@
     {
       "key": "juegoId",
       "value": "1"
+    },
+    {
+      "key": "cacheJuegoId",
+      "value": ""
     }
   ],
   "item": [
@@ -60,6 +64,77 @@
               ]
             }
           }
+        },
+        {
+          "name": "GET /health/live - Estado de instancias",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/live",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Reporta el estado de cada instancia', function () {",
+                  "  pm.expect(body.status).to.be.oneOf(['ok', 'degraded', 'down']);",
+                  "  pm.expect(body.instancias).to.be.an('array').and.not.empty;",
+                  "  body.instancias.forEach(function (i) {",
+                  "    pm.expect(i.host).to.be.a('string');",
+                  "    pm.expect(i.status).to.be.a('string');",
+                  "  });",
+                  "});",
+                  "pm.test('respondido_por coincide con X-Instance-ID', function () {",
+                  "  pm.expect(body.respondido_por).to.eql(pm.response.headers.get('X-Instance-ID'));",
+                  "});",
+                  "console.log('Instancias activas: ' + body.instancias_activas, body.instancias);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /health/ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista para recibir trafico', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Base de datos ok', function () { pm.expect(body.checks.database).to.eql('ok'); });"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "GET /version",
@@ -99,10 +174,10 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Instancia disponible', function () { pm.response.to.have.status(200); });",
-                  "const data = pm.response.json();",
+                  "const body = pm.response.json();",
                   "pm.test('Identidad coherente con X-Instance-ID', function () {",
-                  "  pm.expect(data.instance).to.be.a('string').and.not.empty;",
-                  "  pm.expect(data.instance).to.eql(pm.response.headers.get('X-Instance-ID'));",
+                  "  pm.expect(body.instance).to.be.a('string').and.not.empty;",
+                  "  pm.expect(body.instance).to.eql(pm.response.headers.get('X-Instance-ID'));",
                   "});"
                 ]
               }
@@ -151,8 +226,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Login correcto', function () { pm.response.to.have.status(200); });",
-                  "const data = pm.response.json();",
-                  "pm.collectionVariables.set('token', data.access_token);"
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('token', body.access_token);"
                 ]
               }
             }
@@ -163,6 +238,71 @@
     {
       "name": "Personas",
       "item": [
+        {
+          "name": "GET /personas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/personas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "personas"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Listado de personas', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /personas/{email}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/personas/{{demoEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "personas",
+                "{{demoEmail}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Persona encontrada', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "POST /personas",
           "request": {
@@ -260,6 +400,75 @@
       "name": "Juegos",
       "item": [
         {
+          "name": "GET /juegos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos"
+              ]
+            },
+            "description": "Catalogo completo con generos. Cacheado en Redis (clave juegos:catalogo)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Catalogo disponible', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Header X-Cache presente', function () { pm.expect(pm.response.headers.get('X-Cache')).to.be.oneOf(['HIT', 'MISS']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /juegos/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos/{{juegoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos",
+                "{{juegoId}}"
+              ]
+            },
+            "description": "Detalle de un juego. Cacheado en Redis (clave juego:{id})."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Juego encontrado', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Header X-Cache presente', function () { pm.expect(pm.response.headers.get('X-Cache')).to.be.oneOf(['HIT', 'MISS']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "POST /juegos",
           "request": {
             "method": "POST",
@@ -299,8 +508,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Juego creado', function () { pm.response.to.have.status(201); });",
-                  "const data = pm.response.json();",
-                  "pm.collectionVariables.set('juegoId', data.id_juego);"
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('juegoId', body.id_juego);"
                 ]
               }
             }
@@ -368,6 +577,41 @@
     {
       "name": "Compras - Polimorfismo",
       "item": [
+        {
+          "name": "GET /compras/{persona}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compras/{{demoEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compras",
+                "{{demoEmail}}"
+              ]
+            },
+            "description": "Compras de una persona. Cacheado en Redis (clave compras:{email})."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Compras de la persona', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Header X-Cache presente', function () { pm.expect(pm.response.headers.get('X-Cache')).to.be.oneOf(['HIT', 'MISS']); });"
+                ]
+              }
+            }
+          ]
+        },
         {
           "name": "POST /compras - Politica normal",
           "request": {
@@ -494,6 +738,306 @@
               ]
             }
           }
+        }
+      ]
+    },
+    {
+      "name": "Biblioteca",
+      "item": [
+        {
+          "name": "GET /biblioteca - Mi biblioteca",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/biblioteca",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "biblioteca"
+              ]
+            },
+            "description": "Juegos que posee el usuario del JWT, con generos, fecha y costo de compra. Cacheado en Redis (clave biblioteca:{email})."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Biblioteca propia', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Header X-Cache presente', function () { pm.expect(pm.response.headers.get('X-Cache')).to.be.oneOf(['HIT', 'MISS']); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Biblioteca del usuario autenticado', function () {",
+                  "  pm.expect(body.email_persona).to.eql(pm.collectionVariables.get('demoEmail'));",
+                  "  pm.expect(body.total_juegos).to.eql(body.juegos.length);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /biblioteca/{email}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/biblioteca/{{demoEmail}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "biblioteca",
+                "{{demoEmail}}"
+              ]
+            },
+            "description": "Biblioteca de cualquier persona. 404 si la persona no existe."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Biblioteca de la persona', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Header X-Cache presente', function () { pm.expect(pm.response.headers.get('X-Cache')).to.be.oneOf(['HIT', 'MISS']); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cache-aside - Demo",
+      "description": "Ejecutar en orden (Run folder). Muestra MISS -> HIT -> invalidacion al escribir -> MISS. El header X-Instance-ID muestra que el HIT puede venir de otra replica: el cache esta en Redis y es compartido por api1 y api2.",
+      "item": [
+        {
+          "name": "1. GET /juegos - carga el cache",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Catalogo disponible', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Header X-Cache presente', function () { pm.expect(pm.response.headers.get('X-Cache')).to.be.oneOf(['HIT', 'MISS']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. GET /juegos - HIT",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Catalogo disponible', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Respuesta servida desde Redis', function () { pm.expect(pm.response.headers.get('X-Cache')).to.eql('HIT'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. POST /juegos - invalida el catalogo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Juego demo cache\",\n  \"generos\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Juego creado', function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set('cacheJuegoId', pm.response.json().id_juego);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. GET /juegos - MISS tras invalidar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Catalogo disponible', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Cache invalidado por la escritura', function () { pm.expect(pm.response.headers.get('X-Cache')).to.eql('MISS'); });",
+                  "pm.test('Incluye el juego nuevo', function () {",
+                  "  const id = Number(pm.collectionVariables.get('cacheJuegoId'));",
+                  "  pm.expect(pm.response.json().map(j => j.id_juego)).to.include(id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. GET /juegos - HIT de nuevo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Catalogo disponible', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Respuesta servida desde Redis', function () { pm.expect(pm.response.headers.get('X-Cache')).to.eql('HIT'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. DELETE /juegos/{id} - limpieza",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/juegos/{{cacheJuegoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "juegos",
+                "{{cacheJuegoId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Juego de demo eliminado', function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

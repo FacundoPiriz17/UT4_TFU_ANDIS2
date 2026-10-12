@@ -1,8 +1,17 @@
+import json
 import os
 import socket
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.routers import audit, auth, compras, juegos, personas
+from app import cache
+from app.database import engine
+from app.routers import audit, auth, biblioteca, compras, juegos, personas
 
 app = FastAPI(
     title="ADAII TFU3 - API de Juegos",
@@ -13,6 +22,7 @@ app.include_router(auth.router)
 app.include_router(personas.router)
 app.include_router(juegos.router)
 app.include_router(compras.router)
+app.include_router(biblioteca.router)
 app.include_router(audit.router)
 
 
@@ -40,6 +50,61 @@ def health():
         )
 
     return {"status": "ok"}
+
+def _estado_instancia(host):
+    url = f"http://{host}/instance"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            datos = json.loads(resp.read())
+        try:
+            urllib.request.urlopen(f"http://{host}/health", timeout=2).close()
+            estado = "ok"
+        except urllib.error.HTTPError as e:
+            estado = "unhealthy" if e.code == 503 else f"error_{e.code}"
+        return {"host": host, "status": estado, **datos}
+    except (urllib.error.URLError, OSError, ValueError):
+        return {"host": host, "status": "down"}
+
+
+@app.get("/health/live")
+def health_live():
+    hosts = [h.strip() for h in os.getenv("API_INSTANCES", "api1:8000,api2:8000").split(",") if h.strip()]
+
+    with ThreadPoolExecutor(max_workers=len(hosts) or 1) as pool:
+        instancias = list(pool.map(_estado_instancia, hosts))
+
+    activas = sum(1 for i in instancias if i["status"] == "ok")
+    if activas == len(instancias):
+        status = "ok"
+    elif activas > 0:
+        status = "degraded"
+    else:
+        status = "down"
+
+    return {
+        "status": status,
+        "respondido_por": os.getenv("INSTANCE_NAME", socket.gethostname()),
+        "instancias_activas": f"{activas}/{len(instancias)}",
+        "instancias": instancias,
+    }
+
+@app.get("/health/ready")
+def health_ready():
+    checks = {}
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except SQLAlchemyError:
+        checks["database"] = "error"
+
+    checks["cache"] = "ok" if cache.disponible() else "degraded"
+
+    if checks["database"] != "ok":
+        return JSONResponse(status_code=503, content={"status": "not_ready", "checks": checks})
+
+    return {"status": "ready", "checks": checks}
 
 
 @app.get("/version")
