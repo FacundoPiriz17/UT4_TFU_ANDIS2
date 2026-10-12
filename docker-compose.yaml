@@ -117,7 +117,6 @@ services:
   redis:
     image: redis:7-alpine
 
-    # Solo cache: sin persistencia y con expulsion LRU al llenarse
     command: redis-server --save "" --appendonly no --maxmemory 64mb --maxmemory-policy allkeys-lru
 
     healthcheck:
