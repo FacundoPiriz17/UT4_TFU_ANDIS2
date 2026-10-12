@@ -94,6 +94,7 @@ Archivos: `app/routers/compras.py`, `app/services/compras.py`, `app/strategies/c
 | **api1** | imagen `api` | FastAPI, `:8000` interno, healthcheck |
 | **api2** | imagen `api` | Mismo código/imagen que api1 (nota del diagrama) |
 | **db** | `mysql:8.4` | MySQL, mapea `3307:3306` |
+| **redis** | `redis:7-alpine` | Caché compartido (cache-aside), sin persistencia, LRU con 64 MB |
 
 Conexiones:
 
@@ -131,6 +132,15 @@ Las tablas se crean automáticamente al primer arranque de MySQL vía `docker-en
 - **Auditoría como aspecto** (`app/aspects/audit.py`): el decorador `@auditar("OPERACION")` envuelve cada endpoint y escribe `timestamp | operacion | resultado` (OK o ERROR) en `audit_logs`. Ambas instancias api comparten el volumen `audit_logs`/`/app/logs`.
 - **Autenticación JWT**: `POST /auth/login` devuelve `access_token` (HS256, expiración configurable). Las rutas `/personas`, `/juegos`, `/compras` y `/auditoria` exigen `obtener_usuario_actual` (dependencia HTTPBearer).
 - **Balanceo con healthcheck**: `docker-compose.yaml` marca api1/api2 como saludables (`/health`) antes de levantar Nginx; el upstream de `nginx.conf` reparte las peticiones.
+- **Cache-aside con Redis** (`app/cache.py`): las lecturas consultan primero Redis y, si no está el dato (MISS), lo cargan de MySQL y lo guardan con TTL (`CACHE_TTL`, 60 s por defecto). Las escrituras hacen `commit` y **después** borran las claves afectadas. Redis es compartido por `api1` y `api2`, así que lo que invalida una instancia lo ve la otra. Si Redis no responde, la API sigue leyendo de MySQL (fail-open). Cada respuesta cacheable trae el header `X-Cache: HIT|MISS`.
+
+  | Clave | Endpoint | Se invalida en |
+  |-------|----------|----------------|
+  | `juegos:catalogo` | `GET /juegos` | alta, modificación y baja de juego |
+  | `juego:{id}` | `GET /juegos/{id}` | modificación y baja de juego |
+  | `compras:{email}` | `GET /compras/{email}` | alta, modificación y baja de compra; baja de persona |
+  | `biblioteca:{email}` | `GET /biblioteca`, `GET /biblioteca/{email}` | compras de esa persona; modificación de un juego que posee; baja de persona |
+
 - **Rollback demostrable**: la imagen acepta `ARG FORCE_UNHEALTHY`; con `FORCE_UNHEALTHY=true` el endpoint `/health` responde 503, permitiendo probar el rediseño de una versión defectuosa.
 
 ---
@@ -170,7 +180,7 @@ Los scripts están en `scripts/`, con versiones `.ps1` para PowerShell y `.sh` p
 
 | Opción | Script | Qué comprueba |
 |---|---|---|
-| 1 - Iniciar entorno | `start` | Construye la imagen, inicia los cuatro servicios y verifica su disponibilidad. |
+| 1 - Iniciar entorno | `start` | Construye la imagen, inicia los cinco servicios (db, redis, api1, api2, nginx) y verifica su disponibilidad. |
 | 2 - Ver estado | `status` | Muestra los contenedores y comprueba que el entorno esté listo. |
 | 3 - Demo balanceo | `demo_scaling` | Distribución de solicitudes entre `api1.0` y `api2.0`: escalabilidad horizontal. |
 | 4 - Demo stateless / JWT | `demo_stateless` | Un único JWT funciona en solicitudes atendidas por ambas APIs. |
@@ -180,6 +190,18 @@ Los scripts están en `scripts/`, con versiones `.ps1` para PowerShell y `.sh` p
 | 8 - Ver logs | Desde el menú | Muestra los registros recientes de los servicios. |
 | 9 - Detener entorno | `stop` | Detiene y elimina los contenedores, conservando los volúmenes de datos y auditoría. |
 | 0 - Salir | Desde el menú | Cierra el menú sin detener los contenedores. |
+
+### Endpoints de consulta
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/juegos` | Catálogo completo con géneros (cacheado) |
+| GET | `/juegos/{id}` | Detalle de un juego (cacheado) |
+| GET | `/biblioteca` | Biblioteca del usuario autenticado: juegos que posee, con fecha y costo de compra (cacheado) |
+| GET | `/biblioteca/{email}` | Biblioteca de otra persona (cacheado) |
+| GET | `/compras/{email}` | Compras de una persona (cacheado) |
+| GET | `/personas` | Listado de personas |
+| GET | `/personas/{email}` | Detalle de una persona |
 
 ### Acceso a la API
 

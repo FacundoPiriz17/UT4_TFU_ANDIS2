@@ -18,8 +18,15 @@ x-api-common: &api-common
     # Ambas instancias escriben sobre el mismo volumen de auditoría
     AUDIT_LOG_PATH: /app/logs/operaciones.txt
 
+    # Cache-aside compartido entre instancias
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+    CACHE_TTL: ${CACHE_TTL:-60}
+
   depends_on:
     db:
+      condition: service_healthy
+    redis:
       condition: service_healthy
 
   expose:
@@ -75,6 +82,8 @@ services:
         condition: service_healthy
       api2:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
     restart: unless-stopped
 
@@ -102,6 +111,20 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+
+    # Solo cache: sin persistencia y con expulsion LRU al llenarse
+    command: redis-server --save "" --appendonly no --maxmemory 64mb --maxmemory-policy allkeys-lru
+
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
     restart: unless-stopped
 

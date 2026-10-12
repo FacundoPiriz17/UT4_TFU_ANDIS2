@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import cache
 from app.aspects.audit import auditar
 from app.database import get_db
 from app.models import Login, Persona
@@ -14,6 +15,46 @@ router = APIRouter(
     tags=["Personas"],
     dependencies=[Depends(obtener_usuario_actual)],
 )
+
+
+def _respuesta(persona: Persona):
+    return {
+        "email": persona.EmailPersona,
+        "nombre": persona.NombrePersona,
+        "apellido": persona.ApellidoPersona,
+    }
+
+
+@router.get("")
+def listar_personas(
+    db: Session = Depends(get_db),
+):
+    personas = (
+        db.query(Persona)
+        .order_by(Persona.EmailPersona)
+        .all()
+    )
+
+    return [
+        _respuesta(persona)
+        for persona in personas
+    ]
+
+
+@router.get("/{email}")
+def obtener_persona(
+    email: str,
+    db: Session = Depends(get_db),
+):
+    persona = db.get(Persona, email)
+
+    if persona is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Persona no encontrada",
+        )
+
+    return _respuesta(persona)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -105,6 +146,7 @@ def eliminar_persona(
     try:
         db.delete(persona)
         db.commit()
+        cache.invalidar_persona(email)
     except IntegrityError:
         db.rollback()
         raise HTTPException(

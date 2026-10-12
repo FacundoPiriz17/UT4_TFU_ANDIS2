@@ -2,7 +2,7 @@ import os
 import socket
 from fastapi import FastAPI, HTTPException
 
-from app.routers import audit, auth, compras, juegos, personas
+from app.routers import audit, auth, biblioteca, compras, juegos, personas
 
 app = FastAPI(
     title="ADAII TFU3 - API de Juegos",
@@ -13,6 +13,7 @@ app.include_router(auth.router)
 app.include_router(personas.router)
 app.include_router(juegos.router)
 app.include_router(compras.router)
+app.include_router(biblioteca.router)
 app.include_router(audit.router)
 
 
