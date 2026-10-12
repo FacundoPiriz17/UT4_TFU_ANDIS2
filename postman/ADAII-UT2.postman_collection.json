@@ -66,6 +66,77 @@
           }
         },
         {
+          "name": "GET /health/live - Estado de instancias",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/live",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Responde 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Reporta el estado de cada instancia', function () {",
+                  "  pm.expect(body.status).to.be.oneOf(['ok', 'degraded', 'down']);",
+                  "  pm.expect(body.instancias).to.be.an('array').and.not.empty;",
+                  "  body.instancias.forEach(function (i) {",
+                  "    pm.expect(i.host).to.be.a('string');",
+                  "    pm.expect(i.status).to.be.a('string');",
+                  "  });",
+                  "});",
+                  "pm.test('respondido_por coincide con X-Instance-ID', function () {",
+                  "  pm.expect(body.respondido_por).to.eql(pm.response.headers.get('X-Instance-ID'));",
+                  "});",
+                  "console.log('Instancias activas: ' + body.instancias_activas, body.instancias);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /health/ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista para recibir trafico', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Base de datos ok', function () { pm.expect(body.checks.database).to.eql('ok'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "GET /version",
           "request": {
             "method": "GET",
