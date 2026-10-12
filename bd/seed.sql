@@ -1,20 +1,19 @@
 USE db_games;
 
--- Usuario de demo:
--- email: demo@adaii.local
--- contraseña: Demo123!
-INSERT INTO Persona (
+-- Perfiles locales de las identidades federadas definidas en Keycloak.
+-- INSERT IGNORE permite aplicar el seed sin sobrescribir datos existentes.
+INSERT IGNORE INTO Persona (
     EmailPersona,
     NombrePersona,
     ApellidoPersona
 )
-VALUES (
-    'demo@adaii.local',
-    'Usuario',
-    'Demo'
-);
+VALUES
+    ('demo@adaii.local', 'Usuario', 'Demo'),
+    ('segundo@adaii.local', 'Segundo', 'Demo'),
+    ('admin@adaii.local', 'Administrador', 'Demo');
 
-INSERT INTO Login (
+-- Credencial histórica de UT3; la autenticación UT4 se realiza en Keycloak.
+INSERT IGNORE INTO Login (
     EmailPersona,
     ContrasenaLogin
 )
@@ -23,7 +22,7 @@ VALUES (
     '$2b$12$g95/khE28S0MWLLKyVfDUeBl8ihehINVRTV.kVnSKuH5Zev41nIO2'
 );
 
-INSERT INTO Genero (
+INSERT IGNORE INTO Genero (
     NombreGenero,
     DescripcionGenero
 )
@@ -31,7 +30,7 @@ VALUES
     ('Accion', 'Genero de accion'),
     ('Indie', 'Juegos independientes');
 
-INSERT INTO Juego (
+INSERT IGNORE INTO Juego (
     IdJuego,
     NombreJuego
 )
@@ -39,7 +38,7 @@ VALUES
     (1, 'Juego Demo Normal'),
     (2, 'Juego Demo Invierno');
 
-INSERT INTO JuegoTieneGenero (
+INSERT IGNORE INTO JuegoTieneGenero (
     IdJuego,
     NombreGenero
 )

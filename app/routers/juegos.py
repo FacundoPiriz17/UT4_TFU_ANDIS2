@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models import Copia, Genero, Juego, JuegoTieneGenero
 from app.schemas import JuegoCreate, JuegoUpdate
 from app.services.juegos import listar_juegos, obtener_juego
-from security.dependencies import obtener_usuario_actual
+from security.dependencies import obtener_usuario_actual, requerir_admin
 
 router = APIRouter(
     prefix="/juegos",
@@ -94,7 +94,7 @@ def detalle_juego(
     )
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(requerir_admin)])
 @auditar("INSERTAR_JUEGO")
 def crear_juego(
     datos: JuegoCreate,
@@ -117,7 +117,7 @@ def crear_juego(
     }
 
 
-@router.put("/{id_juego}")
+@router.put("/{id_juego}", dependencies=[Depends(requerir_admin)])
 @auditar("ACTUALIZAR_JUEGO")
 def actualizar_juego(
     id_juego: int,
@@ -156,7 +156,7 @@ def actualizar_juego(
     }
 
 
-@router.delete("/{id_juego}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{id_juego}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(requerir_admin)])
 @auditar("ELIMINAR_JUEGO")
 def eliminar_juego(
     id_juego: int,

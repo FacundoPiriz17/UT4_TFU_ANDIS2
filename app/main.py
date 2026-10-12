@@ -14,8 +14,10 @@ from app.database import engine
 from app.routers import audit, auth, biblioteca, compras, juegos, personas
 
 app = FastAPI(
-    title="ADAII TFU3 - API de Juegos",
+    title="ADAII TFU4 - API de Juegos",
     version=os.getenv("API_VERSION", "dev"),
+    swagger_ui_init_oauth={"clientId": "andis-swagger", "usePkceWithAuthorizationCodeGrant": True,
+                           "scopes": "openid email profile"},
 )
 
 app.include_router(auth.router)

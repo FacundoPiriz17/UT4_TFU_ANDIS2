@@ -37,6 +37,13 @@ def clave_juego(id_juego: int) -> str:
 CLAVE_CATALOGO = "juegos:catalogo"
 
 
+def disponible() -> bool:
+    try:
+        return bool(_cliente.ping())
+    except redis.RedisError:
+        return False
+
+
 def obtener(clave: str) -> Any | None:
     try:
         valor = _cliente.get(clave)

@@ -6,6 +6,6 @@ python-dotenv
 pydantic
 pydantic-settings
 alembic
-PyJWT
+PyJWT[crypto]>=2.10,<3
 bcrypt
 redis

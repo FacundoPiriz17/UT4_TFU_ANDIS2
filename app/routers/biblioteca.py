@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app import cache
 from app.database import get_db
 from app.services.biblioteca import obtener_biblioteca
-from security.dependencies import obtener_usuario_actual
+from security.dependencies import Identidad, autorizar_persona, obtener_usuario_actual
 
 router = APIRouter(
     prefix="/biblioteca",
@@ -28,10 +28,11 @@ def _biblioteca_cacheada(
 @router.get("")
 def mi_biblioteca(
     response: Response,
-    email: str = Depends(obtener_usuario_actual),
+    usuario: Identidad = Depends(obtener_usuario_actual),
     db: Session = Depends(get_db),
 ):
-    return _biblioteca_cacheada(db, email, response)
+    autorizar_persona(usuario, usuario.email, db)
+    return _biblioteca_cacheada(db, usuario.email, response)
 
 
 @router.get("/{email_persona}")
@@ -39,5 +40,7 @@ def biblioteca_de(
     email_persona: str,
     response: Response,
     db: Session = Depends(get_db),
+    usuario: Identidad = Depends(obtener_usuario_actual),
 ):
+    autorizar_persona(usuario, email_persona, db)
     return _biblioteca_cacheada(db, email_persona, response)
