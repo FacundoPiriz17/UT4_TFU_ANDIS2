@@ -102,7 +102,9 @@ services:
       - '${API_PORT:-8000}:80'
 
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Gateway: throttling + offloading (compresión, estáticos, 429 centralizado)
+      - ./nginx/default.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/static:/var/www/static:ro
 
     depends_on:
       api1:
@@ -112,6 +114,19 @@ services:
       redis:
         condition: service_healthy
 
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_KEYCLOAK_URL: http://localhost:${KEYCLOAK_PORT:-8081}
+    image: ut4-segrend-frontend:1.0
+    ports:
+      - '${FRONTEND_PORT:-3000}:80'
+    depends_on:
+      nginx:
+        condition: service_healthy
     restart: unless-stopped
 
   db:

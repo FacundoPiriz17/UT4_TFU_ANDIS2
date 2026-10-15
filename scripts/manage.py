@@ -12,7 +12,23 @@ from datetime import datetime, timezone
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = os.getenv("BASE_URL", "http://localhost:8000").rstrip("/")
+
+
+def _cargar_env():
+    # Mismas variables que usa docker compose (API_PORT, BASE_URL, ...).
+    env = ROOT / ".env"
+    if not env.exists():
+        return
+    for linea in env.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if linea and not linea.startswith("#") and "=" in linea:
+            clave, valor = linea.split("=", 1)
+            os.environ.setdefault(clave.strip(), valor.strip())
+
+
+_cargar_env()
+API_PORT = os.getenv("API_PORT", "8000")
+BASE = os.getenv("BASE_URL", f"http://localhost:{API_PORT}").rstrip("/")
 SERVICES = ("db", "redis", "api1", "api2", "nginx")
 EXPECTED = {"api1.0", "api2.0"}
 STATE = ROOT / ".deploy/current_version"
@@ -128,6 +144,7 @@ def build(version="1.0", broken="false"):
 
 def start():
     build()
+    compose("build", "frontend")
     os.environ["API_IMAGE"] = "api:1.0"
     compose("up", "-d", "--no-build")
     wait(("db", "redis", "api1", "api2"))
@@ -135,7 +152,8 @@ def start():
     ready("1.0")
     STATE.write_text("1.0\n")
     compose("ps")
-    print("API: http://localhost:8000\nSwagger: http://localhost:8000/docs")
+    print("Frontend: http://localhost:3000")
+    print(f"API: {BASE}\nSwagger: {BASE}/docs")
     print("Usuario demo: demo@adaii.local / Demo123!")
 
 

@@ -210,6 +210,33 @@ Los scripts están en `scripts/`, con versiones `.ps1` para PowerShell y `.sh` p
 - Usuario demo: `demo@adaii.local`
 - Contraseña: `Demo123!`
 
+### Frontend de demostración (React)
+
+`frontend/` contiene una consola web (React + Vite) para demostrar cada patrón de la UT4 con pruebas empíricas en vivo. Se levanta junto al resto con `docker compose up -d --build` y queda en **http://localhost:3000**.
+
+| Página | Patrón | Qué se demuestra |
+|---|---|---|
+| Health Endpoint Monitoring | Disponibilidad | Monitoreo en vivo de `/health/live` y `/health/ready`; estado degradado al detener `api2` o `redis` |
+| Throttling | Disponibilidad | Ráfaga concurrente → respuestas 429 del gateway vs. cliente a 8 req/s sin rechazos |
+| Cache-Aside | Rendimiento | Latencia HIT vs MISS por réplica e invalidación tras una escritura |
+| CQRS | Rendimiento | Comandos de compra (POST/PUT/DELETE) y proyecciones de lectura (`/compras`, `/resumen`) |
+| Federated Identity | Seguridad | Login OIDC + PKCE en Keycloak, claims del token y casos 401/403/410 |
+| Gateway Offloading | Seguridad | gzip, estáticos servidos por nginx y reparto de carga |
+| Despliegue con rollback | Despliegue | Versión por réplica en vivo mientras corre `demo_rollback` |
+
+El navegador solo habla con `/api/*` (proxy del contenedor `frontend` hacia el gateway `nginx`) y con Keycloak para el login (cliente público `andis-frontend`).
+
+> Si Keycloak ya se había iniciado antes de agregar el cliente `andis-frontend`, el realm no se reimporta. Recrear solo su volumen:
+> `docker compose rm -sf keycloak; docker volume rm ut4_segrend_keycloak_data; docker compose up -d keycloak`
+
+Desarrollo local con recarga en caliente (requiere el stack corriendo en el puerto 8000):
+
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:5173
+```
+
 ---
 
 ## 6. Estructura del repositorio
