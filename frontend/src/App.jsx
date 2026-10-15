@@ -11,6 +11,8 @@ import Cqrs from './pages/Cqrs';
 import FederatedIdentity from './pages/FederatedIdentity';
 import GatewayOffloading from './pages/GatewayOffloading';
 import Despliegue from './pages/Despliegue';
+import Configuracion from './pages/Configuracion';
+import Antiguas from './pages/Antiguas';
 
 const PAGINAS = {
   inicio: Inicio,
@@ -22,6 +24,13 @@ const PAGINAS = {
   identity: FederatedIdentity,
   offloading: GatewayOffloading,
   deploy: Despliegue,
+  configuration: Configuracion,
+  'ut2-tacticas': () => <Antiguas demo="ut2-tacticas" />,
+  'ut2-rollback': () => <Antiguas demo="ut2-rollback" />,
+  'ut3-componentes': () => <Antiguas demo="ut3-componentes" />,
+  'ut3-balanceo': () => <Antiguas demo="ut3-balanceo" />,
+  'ut3-stateless': () => <Antiguas demo="ut3-stateless" />,
+  'ut3-acid': () => <Antiguas demo="ut3-acid" />,
 };
 
 // Un error en una demo no debe dejar en blanco toda la consola.

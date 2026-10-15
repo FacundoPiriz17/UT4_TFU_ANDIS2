@@ -32,7 +32,7 @@ export default function RequestLog() {
           <table className="table log-table">
             <thead>
               <tr>
-                <th>Hora</th><th>Método</th><th>Ruta</th><th>Status</th><th>Latencia</th><th>Instancia</th><th>Cache</th>
+                <th>Hora</th><th>Método</th><th>Ruta</th><th>Status</th><th>Latencia</th><th>Instancia</th><th>Color / versión</th><th>Cache</th>
               </tr>
             </thead>
             <tbody>
@@ -44,11 +44,12 @@ export default function RequestLog() {
                   <td><StatusHttp status={r.status} /></td>
                   <td className="mono">{r.ms} ms</td>
                   <td className="mono">{r.instancia || <span className="muted">gateway</span>}</td>
+                  <td className="mono">{r.slot ? `${r.slot} · ${r.version}` : '—'}</td>
                   <td>{r.cache ? <span className={`cache-tag cache-${r.cache.toLowerCase()}`}>{r.cache}</span> : <span className="muted">—</span>}</td>
                 </tr>
               ))}
               {registro.length === 0 && (
-                <tr><td colSpan={7} className="muted center">Todavía no hay tráfico. Ejecutá alguna demo.</td></tr>
+                <tr><td colSpan={8} className="muted center">Todavía no hay tráfico. Ejecutá alguna demo.</td></tr>
               )}
             </tbody>
           </table>

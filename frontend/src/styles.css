@@ -59,6 +59,16 @@
 }
 
 * { box-sizing: border-box; }
+.legacy-nav summary { cursor: pointer; }
+.legacy-nav details { padding-left: 10px; }
+.json-editor { width: 100%; min-height: 245px; resize: vertical; padding: 14px; margin-bottom: 14px; font-family: var(--mono); line-height: 1.6; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; }
+.json-editor:focus { outline: 2px solid var(--primary); }
+.table-scroll { max-width: 100%; overflow: auto; }
+.card.slot-blue { border-top: 4px solid var(--blue); }
+.card.slot-green { border-top: 4px solid var(--green); }
+.card.slot-active { box-shadow: 0 0 0 2px var(--primary); }
+.legacy-nav summary::after { content: '▸'; margin-left: auto; }
+.legacy-nav[open] > summary::after, .legacy-nav details[open] > summary::after { content: '▾'; }
 html, body { margin: 0; }
 body {
   background: var(--bg);

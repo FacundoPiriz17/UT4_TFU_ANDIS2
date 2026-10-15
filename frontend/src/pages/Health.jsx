@@ -34,6 +34,7 @@ export default function Health() {
 
   const instancias = live?.data?.instancias || [];
   const checks = ready?.data?.checks || {};
+  const segundaReplica = instancias[1]?.host?.split(':')[0] || 'api2';
 
   return (
     <div className="page">
@@ -84,7 +85,7 @@ export default function Health() {
             <div className="dep"><span className="dep-icon">⚡</span><span>Redis (cache)</span><Estado valor={checks.cache ?? (ready ? 'error' : null)} /></div>
             <div className="dep"><span className="dep-icon">✓</span><span>Resultado</span><Estado valor={ready?.data?.status ?? 'down'} /></div>
           </div>
-          <p className="muted small">Si Redis cae, la API sigue sirviendo desde MySQL (fail-open) y el estado pasa a <i>degraded</i>, no a caído.</p>
+          <p className="muted small">Si Redis cae, la API sigue sirviendo desde MySQL (fail-open): cache queda <i>degraded</i> y readiness sigue <i>ready</i>.</p>
         </Card>
         <Card titulo="Línea de tiempo" subtitulo={`Últimos ${HISTORIAL} chequeos (liveness arriba, readiness abajo)`}>
           <div className="timeline">
@@ -106,7 +107,7 @@ export default function Health() {
       <div className="grid grid-2">
         <Card titulo="Cómo logra la disponibilidad">
           <ComoFunciona items={[
-            <><b>/health</b> (liveness): lo usa Docker en el <code>healthcheck</code>; nginx no arranca hasta que ambas réplicas estén sanas y Docker reinicia las que fallan (<code>restart: unless-stopped</code>).</>,
+            <><b>/health</b> (liveness): Docker lo usa para marcar la salud del contenedor. La política <code>restart: unless-stopped</code> reinicia procesos que terminan; no reinicia un contenedor solo por estar unhealthy.</>,
             <><b>/health/ready</b> (readiness): verifica MySQL y Redis. Distingue "vivo" de "listo para atender".</>,
             <><b>/health/live</b>: consulta en paralelo a todas las réplicas y reporta <i>ok / degraded / down</i>, detectando fallas parciales.</>,
             'Reducir el tiempo de detección (MTTD) reduce el tiempo de recuperación y aumenta la disponibilidad observada.',
@@ -114,11 +115,11 @@ export default function Health() {
         </Card>
         <Card titulo="Prueba empírica" subtitulo="Ejecutar en otra terminal y mirar este panel">
           <p className="small">1. Simular la caída de una réplica → estado <b>degraded</b> (1/2):</p>
-          <Comando>docker compose stop api2</Comando>
+          <Comando>{`docker compose stop ${segundaReplica}`}</Comando>
           <p className="small">2. Simular caída de la cache → readiness con cache <b>degraded</b>, la API sigue respondiendo:</p>
           <Comando>docker compose stop redis</Comando>
           <p className="small">3. Recuperar todo y ver cómo vuelve a <b>ok</b>:</p>
-          <Comando>docker compose start api2 redis</Comando>
+          <Comando>{`docker compose start ${segundaReplica} redis`}</Comando>
         </Card>
       </div>
 

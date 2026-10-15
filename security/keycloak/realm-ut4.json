@@ -92,11 +92,11 @@
         }
       ],
       "redirectUris": [
-        "http://localhost:3000/*",
+        "http://localhost:3200/*",
         "http://localhost:5173/*"
       ],
       "webOrigins": [
-        "http://localhost:3000",
+        "http://localhost:3200",
         "http://localhost:5173"
       ],
       "attributes": {

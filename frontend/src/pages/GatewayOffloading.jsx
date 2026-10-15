@@ -110,7 +110,7 @@ export default function GatewayOffloading() {
                 </div>
               ))}
               <div className="lb-seq">
-                {balanceo.secuencia.map((s, i) => <span key={i} className={`lb-chip ${s.startsWith('api1') ? 'c1' : 'c2'}`}>{s.replace('.0', '')}</span>)}
+                {balanceo.secuencia.map((s, i) => <span key={i} className={`lb-chip ${s.startsWith('api1') || s.startsWith('green1') ? 'c1' : 'c2'}`}>{s.replace('.0', '')}</span>)}
               </div>
             </div>
           )}

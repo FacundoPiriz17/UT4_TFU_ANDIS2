@@ -31,21 +31,22 @@ function Diagrama() {
         </marker>
       </defs>
 
-      {nodo(10, 150, 130, 70, 'Navegador', 'React · :3000', 'dg-client')}
-      {nodo(185, 110, 170, 150, 'Gateway Nginx', ':8000', 'dg-gateway', [
+      {nodo(10, 150, 130, 70, 'Navegador', 'React · :3200', 'dg-client')}
+      {nodo(10, 30, 165, 70, 'JSON externo', 'compartido por Blue / Green', 'dg-store')}
+      {nodo(185, 110, 170, 150, 'Gateway Nginx', 'un color activo', 'dg-gateway', [
         { t: 'Throttling', c: 'green' },
         { t: 'Gateway Offloading', c: 'violet' },
-        { t: 'Balanceo', c: 'gray' },
+        { t: 'Blue / Green + balanceo', c: 'gray' },
       ])}
-      {nodo(410, 40, 190, 130, 'api1 · FastAPI', 'réplica stateless', 'dg-api', [
+      {nodo(410, 40, 190, 130, 'Blue · 2 réplicas', 'api1 + api2 · v1.0 inicial', 'dg-api', [
         { t: 'Health Endpoints', c: 'green' },
         { t: 'CQRS · Cache-Aside', c: 'blue' },
       ])}
-      {nodo(410, 200, 190, 130, 'api2 · FastAPI', 'misma imagen versionada', 'dg-api', [
+      {nodo(410, 200, 190, 130, 'Green · 2 réplicas', 'green1 + green2 · v2.0 inicial', 'dg-api', [
         { t: 'Health Endpoints', c: 'green' },
         { t: 'CQRS · Cache-Aside', c: 'blue' },
       ])}
-      {nodo(670, 20, 160, 70, 'Redis', 'cache LRU · TTL 60 s', 'dg-store')}
+      {nodo(670, 20, 160, 70, 'Redis', 'cache LRU · TTL configurable', 'dg-store')}
       {nodo(670, 150, 160, 70, 'MySQL 8.4', 'modelo de escritura', 'dg-store')}
       {nodo(670, 290, 250, 96, 'Keycloak', 'IdP OIDC · realm andis-ut4', 'dg-idp', [
         { t: 'Federated Identity', c: 'violet' },
@@ -55,6 +56,7 @@ function Diagrama() {
       <text x="75" y="242" className="dg-edge-label" textAnchor="middle">/api → gateway</text>
       {flecha('M355,160 L408,110')}
       {flecha('M355,215 L408,262')}
+      <path d="M175,65 L408,65 M165,88 C375,30 370,265 408,265" className="dg-edge dg-edge-dashed" markerEnd="url(#flecha)" />
       {flecha('M600,90 L668,60', 'cache', 632, 64)}
       {flecha('M600,262 L668,200')}
       {flecha('M600,110 L668,175', 'SQL', 640, 130)}
@@ -87,11 +89,11 @@ export default function Inicio() {
         </div>
       </header>
 
-      <Card titulo="Vista de despliegue" subtitulo="Docker Compose: frontend, gateway, 2 réplicas de API, Redis, MySQL y Keycloak">
+      <Card titulo="Vista de despliegue" subtitulo="Docker Compose: un frontend, gateway, Blue y Green (2 réplicas cada uno), Redis, MySQL, Keycloak y JSON externo">
         <Diagrama />
       </Card>
 
-      <h2 className="section-title">Patrones implementados</h2>
+      <h2 className="section-title">Patrones y estrategia de despliegue · UT4</h2>
       <div className="grid grid-3">
         {PATRONES.map((p) => (
           <a key={p.id} href={`#/${p.id}`} className="pattern-card">
@@ -117,7 +119,9 @@ export default function Inicio() {
           <li><b>Cache-Aside:</b> repetir lecturas y comparar latencias HIT vs MISS; invalidar con una escritura.</li>
           <li><b>Health Endpoint Monitoring:</b> detener <code>api2</code> y ver el estado degradado en vivo.</li>
           <li><b>Throttling + Gateway Offloading:</b> lanzar una ráfaga y ver los 429; mostrar gzip y estáticos.</li>
-          <li><b>Despliegue:</b> ejecutar la demo de rollback y observar las versiones por réplica.</li>
+          <li><b>Despliegue:</b> cambiar el tráfico de Blue a Green y observar el color y la versión que responden.</li>
+          <li><b>Facilidad de modificación:</b> editar el JSON externo y ver la nueva cotización con las mismas APIs.</li>
+          <li><b>TFU anteriores:</b> abrir Demos antiguas → UT2 o UT3 para las tácticas y conceptos heredados.</li>
         </ol>
       </Card>
     </div>

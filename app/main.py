@@ -11,7 +11,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import cache
 from app.database import engine
-from app.routers import audit, auth, biblioteca, compras, juegos, personas
+from app.routers import audit, auth, biblioteca, compras, juegos, personas, configuration, deployment, legacy
+from app.configuration import ConfigurationUnavailable, store
 
 app = FastAPI(
     title="ADAII TFU4 - API de Juegos",
@@ -26,12 +27,22 @@ app.include_router(juegos.router)
 app.include_router(compras.router)
 app.include_router(biblioteca.router)
 app.include_router(audit.router)
+app.include_router(configuration.router)
+app.include_router(deployment.router)
+app.include_router(legacy.router)
+
+
+@app.exception_handler(ConfigurationUnavailable)
+async def configuration_unavailable(request, exc):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 @app.middleware("http")
 async def identificar_instancia(request, call_next):
     response = await call_next(request)
     response.headers["X-Instance-ID"] = os.getenv("INSTANCE_NAME", socket.gethostname())
+    response.headers["X-Deployment-Slot"] = os.getenv("DEPLOYMENT_SLOT", "blue")
+    response.headers["X-API-Version"] = os.getenv("API_VERSION", "dev")
     return response
 
 
@@ -117,7 +128,13 @@ def version():
     }
 @app.get("/instance")
 def instance():
+    config = store.snapshot()
     return {
         "instance": os.getenv("INSTANCE_NAME", socket.gethostname()),
         "version": os.getenv("API_VERSION", "dev"),
+        "slot": os.getenv("DEPLOYMENT_SLOT", "blue"),
+        "process_id": os.getpid(),
+        "configuration_hash": config["hash"],
+        "configuration_revision": config["document"]["revision"],
+        "configuration_status": config["status"],
     }

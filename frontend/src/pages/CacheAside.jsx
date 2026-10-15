@@ -132,7 +132,7 @@ export default function CacheAside() {
     <div className="page">
       <EncabezadoPatron id="cache" atributo="Rendimiento">
         La aplicación gestiona la cache explícitamente: lee primero de Redis y solo ante un MISS consulta MySQL y guarda el resultado
-        con TTL de 60 s. Las escrituras hacen commit y después borran las claves afectadas. Redis es compartido, así que lo que
+        con TTL definido en el JSON externo. Las escrituras hacen commit y después borran las claves afectadas. Redis es compartido, así que lo que
         invalida api1 lo ve api2.
       </EncabezadoPatron>
 

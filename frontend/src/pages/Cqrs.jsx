@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, mensajeError } from '../lib/api';
 import { useSesion } from '../lib/auth';
+import { useConfiguration } from '../lib/configuration';
 import { Aviso, Boton, Card, ComoFunciona, EncabezadoPatron, Json, RequiereLogin, StatusHttp } from '../components/ui';
 
 function Contenido() {
+  const settings = useConfiguration();
   const sesion = useSesion();
   const esAdmin = sesion.roles.includes('admin');
   const [email, setEmail] = useState(sesion.email);
@@ -74,7 +76,7 @@ function Contenido() {
               <label>Política (Strategy)
                 <select value={form.politica} onChange={(e) => setForm({ ...form, politica: e.target.value })}>
                   <option value="normal">normal (100%)</option>
-                  <option value="invierno">invierno (50%)</option>
+                  <option value="invierno">invierno (−{settings?.winter_discount_percent ?? '…'}%)</option>
                 </select>
               </label>
             </div>

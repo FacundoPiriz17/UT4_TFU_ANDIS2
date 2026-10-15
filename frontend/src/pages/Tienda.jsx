@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, mensajeError } from '../lib/api';
 import { useSesion } from '../lib/auth';
+import { useConfiguration } from '../lib/configuration';
 import { Aviso, Boton, Card, RequiereLogin } from '../components/ui';
 
 const PRECIOS = [100, 250, 500];
 
-function TarjetaJuego({ juego, poseido, onComprar }) {
+function TarjetaJuego({ juego, poseido, onComprar, settings }) {
   const [costo, setCosto] = useState(100);
   const [politica, setPolitica] = useState('normal');
   const [cargando, setCargando] = useState(false);
-  const final = politica === 'invierno' ? Math.floor(costo * 0.5) : costo;
+  const discount = settings?.winter_discount_percent ?? 50;
+  // Mismo redondeo a par que usa round() en el servicio Python.
+  const scaled = costo * (100 - discount);
+  const whole = Math.floor(scaled / 100);
+  const winter = scaled % 100 === 50 ? whole + whole % 2 : Math.round(scaled / 100);
+  const final = politica === 'invierno' ? winter : costo;
   const tono = (juego.id_juego * 47) % 360;
 
   return (
@@ -33,10 +39,11 @@ function TarjetaJuego({ juego, poseido, onComprar }) {
               </select>
               <select value={politica} onChange={(e) => setPolitica(e.target.value)}>
                 <option value="normal">Normal</option>
-                <option value="invierno">Invierno −50%</option>
+                <option value="invierno">Invierno −{discount}%</option>
               </select>
             </div>
             <Boton
+              disabled={!settings || !settings.purchases_enabled}
               cargando={cargando}
               onClick={async () => {
                 setCargando(true);
@@ -44,7 +51,7 @@ function TarjetaJuego({ juego, poseido, onComprar }) {
                 setCargando(false);
               }}
             >
-              Comprar · ${final}
+              {settings?.purchases_enabled ? `Comprar · $${final}` : 'Compras pausadas'}
             </Boton>
           </div>
         )}
@@ -86,7 +93,7 @@ function NuevoJuego({ onCreado }) {
   );
 }
 
-function Contenido() {
+function Contenido({ settings }) {
   const sesion = useSesion();
   const [catalogo, setCatalogo] = useState([]);
   const [biblioteca, setBiblioteca] = useState(null);
@@ -122,7 +129,7 @@ function Contenido() {
         <Card titulo="Catálogo" subtitulo={`${catalogo.length} juegos · GET /juegos (cacheado)`} acciones={<Boton variante="ghost" onClick={cargar}>Recargar</Boton>}>
           <div className="games">
             {catalogo.map((j) => (
-              <TarjetaJuego key={j.id_juego} juego={j} poseido={poseidos.has(j.id_juego)} onComprar={comprar} />
+              <TarjetaJuego key={j.id_juego} juego={j} poseido={poseidos.has(j.id_juego)} onComprar={comprar} settings={settings} />
             ))}
           </div>
         </Card>
@@ -154,6 +161,7 @@ function Contenido() {
 }
 
 export default function Tienda() {
+  const settings = useConfiguration();
   return (
     <div className="page">
       <header className="pattern-head">
@@ -164,7 +172,8 @@ export default function Tienda() {
           (Compra + Copia) e invalida la biblioteca en Redis.
         </p>
       </header>
-      <RequiereLogin><Contenido /></RequiereLogin>
+      {settings && <Aviso>{settings.store_notice}</Aviso>}
+      <RequiereLogin><Contenido settings={settings} /></RequiereLogin>
     </div>
   );
 }

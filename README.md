@@ -1,263 +1,225 @@
-# UT3_TFU - Sistema de Juegos (ADAII)
+# ANDIS · TFU UT4 — API y consola de demostración
 
-API REST de juegos construida con **FastAPI**, **SQLAlchemy** y **MySQL**, desplegada en **Docker** con balanceo de carga. Este README explica la estructura del sistema tal como se modela en el diagrama de componentes, y mapea cada elemento del diagrama con el código real del proyecto.
+Aplicación de juegos que evoluciona las TFU anteriores. FastAPI, SQLAlchemy, MySQL,
+Redis, Keycloak, React y Docker Compose. No requiere Kubernetes.
 
----
+## Inicio
 
-## 1. Visión general
-
-El sistema gestiona personas, juegos, géneros y compras, con autenticación **JWT**, auditoría de operaciones y una política de costo de compra configurable (patrón **Strategy**).
-
-Stack:
-
-| Capa | Tecnología |
-|------|-----------|
-| API | Python 3.12 + FastAPI + Uvicorn |
-| ORM | SQLAlchemy (PyMySQL) |
-| Base de datos | MySQL 8.4 |
-| Autenticación | PyJWT (HS256) + bcrypt |
-| Despliegue | Docker Compose + Nginx (balanceador) |
-
----
-
-## 2. Estructura del diagrama de componentes
-
-El archivo tiene **2 páginas**. Como **todo el sistema corre dentro de contenedores Docker**, se realizaron dos diagramas separados por dimensiones del trabajo, para poder entender mejor el trabajo:
-
-1. **Main | Diagrama de Componentes** - componentes lógicos de la aplicación (subsistemas, módulos y sus relaciones).
-2. **Docker | Diagrama de Componentes** - despliegue físico de esos componentes en contenedores (qué imagen, qué puerto, cómo se conectan entre sí).
-
-<img src="docs/diagramas/diagrama-1-principal-componentes.png" alt="Diagrama de componentes lógicos" width="100%"><br>
-*Diagrama 1 - Componentes lógicos (Main).*
-
-<img src="docs/diagramas/diagrama-2-docker-componentes.png" alt="Diagrama de despliegue en Docker" width="100%"><br>
-*Diagrama 2 - Despliegue en contenedores (Docker).*
-
-Notación UML usada:
-
-- `«Subsystem»` / `«Módulo»` — cajas que agrupan componentes con encabezado y un "puerto" (pestaña lateral izquierda `shape=module`).
-- **Círculo** (interfaz provista, ball) y **semicírculo** (interfaz requerida, socket) — conexiones "ball-and-socket"; los componentes se ensamblan encajando el círculo en el semicírculo.
-- **Flecha punteada** — dependencia (se usa el componente al que apunta).
-- **Cilindro** — base de datos.
-
-### 2.1 Página 1 - Componentes lógicos
-
-#### Subsystem: Login
-
-| Componente | Rol |
-|-----------|-----|
-| **Auth(Router)** | Endpoint `POST /auth/login`: valida credenciales contra la tabla `Login` y emite un **Token** (JWT) |
-| **JWT** | Emisión y verificación de tokens (módulo `security/jwt.py`) |
-
-Flujo: `Auth(Router)` provee el token JWT → los routers del negocio lo **requieren** para autorizar peticiones (dependencia `security/dependencies.py`).
-
-Archivos: `app/routers/auth.py`, `security/jwt.py`, `security/password.py`, `security/dependencies.py`.
-
-#### Subsystem: Database
-
-| Componente | Rol |
-|-----------|-----|
-| **SQL Alchemy** | ORM: mapea las tablas a objetos (`app/database.py`, `app/models.py`) |
-| **ISQL** (interfaz) | Interfaz lógica hacia el motor; los repositorios la consumen |
-| **MySQL** | Motor de base de datos (cilindro) |
-
-Flujos etiquetados en el diagrama: *Peticiones SQL de Compra* → `ISQL` → MySQL, y *Objeto Compra* de vuelta a la lógica de negocio. Lo mismo para *Peticiones SQL de Persona* y *SQL de Juego*.
-
-Archivos: `app/database.py`, `app/models.py`, `bd/schema.sql`.
-
-#### Subsystem: Logic of business
-
-Contiene los módulos de negocio y sus componentes internos:
-
-| Módulo `«Módulo»` | Componentes | Rol |
-|-------------------|-------------|-----|
-| **Compras** | `Compras(Router)`, `Servicio Compras`, `Estrategia Compras` | CRUD de compras; aplica la política de costo (Strategy) |
-| **Personas** | `Personas(Router)`, `Gestor de personas` | CRUD de personas y alta de credenciales |
-| **Juegos** | `Juegos(Router)`, `Gestor de juegos` | CRUD de juegos y asignación de géneros |
-| **Auditoria** | `Audit(Router)`, `Audit(Aspecto)` | Registra cada operación en un log (`app/aspects/audit.py`) |
-
-Conexiones clave del diagrama:
-
-- `Juegos(Router)` → `Audit(Aspecto)`: dependencia punteada; todo router decorado con `@auditar` dispara la auditoría.
-- `Compras(Router)` → `Servicio Compras` → `Estrategia Compras` (*Calcular costo*): la estrategia calcula `costo_base` una vez creada/actualizada la `Compra`.
-- `Personas(Router)` → `Gestor de personas` → emite *Información de operación persona*.
-- `Servicio Compras` → `Estrategia Compras` con etiquetas *Información de compra* y *Monto*: la estrategia recibe el monto base y devuelve el costo final.
-
-Archivos: `app/routers/compras.py`, `app/services/compras.py`, `app/strategies/costo_compra.py`, `app/routers/personas.py`, `app/routers/juegos.py`, `app/routers/audit.py`.
-
-### 2.2 Página 2 — Despliegue Docker
-
-| Componente | Contenedor | Detalle |
-|-----------|-----------|---------|
-| **Cliente** | - | Curl / Postman contra `HTTP: 8000` |
-| **Ngnix** [sic] | `nginx:alpine` | Balanceador. Publica `8000:80`, delega en `fastapi_backend` (`nginx.conf`) |
-| **api1** | imagen `api` | FastAPI, `:8000` interno, healthcheck |
-| **api2** | imagen `api` | Mismo código/imagen que api1 (nota del diagrama) |
-| **db** | `mysql:8.4` | MySQL, mapea `3307:3306` |
-| **redis** | `redis:7-alpine` | Caché compartido (cache-aside), sin persistencia, LRU con 64 MB |
-
-Conexiones:
-
-- Cliente → Nginx (`HTTP: 8000`)
-- Nginx → api1 y api2 (`HTTP-REST`)
-- api1/api2 → db (`SQLAlchemy`)
-
-Volúmenes: `mysqldata` (datos persistentes) y `audit_logs` (log compartido entre ambas instancias de auditoría).
-
-Archivos: `docker-compose.yaml`, `nginx.conf`, `dockerfile`.
-
----
-
-## 3. Modelo de datos (MySQL)
-
-Definido en `bd/schema.sql`:
-
-| Tabla | Descripción |
-|-------|-------------|
-| `Persona` | Email (PK), nombre, apellido |
-| `Login` | Email (PK/FK → Persona), contraseña hasheada (bcrypt), fecha de creación |
-| `Genero` | Nombre (PK), descripción |
-| `Juego` | Id (PK autoincrement), nombre |
-| `JuegoTieneGenero` | Relación N:M entre Juego y Genero |
-| `Compra` | Email (FK) + IdJuego (FK) (PK compuesta), fecha, costo |
-| `Copia` | Relación extra: registro de copia adquirida por una persona |
-
-Las tablas se crean automáticamente al primer arranque de MySQL vía `docker-entrypoint-initdb.d` (`bd/schema.sql` → `01_schema.sql`, `bd/seed.sql` → `02_seed.sql`).
-
----
-
-## 4. Decisiones de arquitectura
-
-- **Patrón Strategy** (`app/strategies/costo_compra.py`): el costo de una compra se calcula según la política recibida (`normal` = costo base, `invierno` = 50%). `obtener_estrategia()` resuelve la estrategia; nuevas políticas solo agregan una clase al mapa `_ESTRATEGIAS`.
-- **Auditoría como aspecto** (`app/aspects/audit.py`): el decorador `@auditar("OPERACION")` envuelve cada endpoint y escribe `timestamp | operacion | resultado` (OK o ERROR) en `audit_logs`. Ambas instancias api comparten el volumen `audit_logs`/`/app/logs`.
-- **Autenticación JWT**: `POST /auth/login` devuelve `access_token` (HS256, expiración configurable). Las rutas `/personas`, `/juegos`, `/compras` y `/auditoria` exigen `obtener_usuario_actual` (dependencia HTTPBearer).
-- **Balanceo con healthcheck**: `docker-compose.yaml` marca api1/api2 como saludables (`/health`) antes de levantar Nginx; el upstream de `nginx.conf` reparte las peticiones.
-- **Cache-aside con Redis** (`app/cache.py`): las lecturas consultan primero Redis y, si no está el dato (MISS), lo cargan de MySQL y lo guardan con TTL (`CACHE_TTL`, 60 s por defecto). Las escrituras hacen `commit` y **después** borran las claves afectadas. Redis es compartido por `api1` y `api2`, así que lo que invalida una instancia lo ve la otra. Si Redis no responde, la API sigue leyendo de MySQL (fail-open). Cada respuesta cacheable trae el header `X-Cache: HIT|MISS`.
-
-  | Clave | Endpoint | Se invalida en |
-  |-------|----------|----------------|
-  | `juegos:catalogo` | `GET /juegos` | alta, modificación y baja de juego |
-  | `juego:{id}` | `GET /juegos/{id}` | modificación y baja de juego |
-  | `compras:{email}` | `GET /compras/{email}` | alta, modificación y baja de compra; baja de persona |
-  | `biblioteca:{email}` | `GET /biblioteca`, `GET /biblioteca/{email}` | compras de esa persona; modificación de un juego que posee; baja de persona |
-
-- **Rollback demostrable**: la imagen acepta `ARG FORCE_UNHEALTHY`; con `FORCE_UNHEALTHY=true` el endpoint `/health` responde 503, permitiendo probar el rediseño de una versión defectuosa.
-
----
-
-## 5. Ejecución y scripts de demostración
-
-Requisitos: Docker Desktop/Engine iniciado, Docker Compose y Python 3.12+.
-
-Abrir una terminal en la carpeta del proyecto y ejecutar el menú:
-
-**Windows - PowerShell:**
+Con Docker Desktop iniciado, desde la raíz:
 
 ```powershell
-.\run.ps1
+docker compose up -d --build
 ```
 
-Si PowerShell bloquea la ejecución de scripts:
+Compose inicia el frontend, gateway, dos réplicas Blue, dos Green, MySQL, Redis y
+Keycloak. Si no existe `.env`, copiar `.env.example` antes de iniciar.
+
+| Servicio | Puerto predeterminado | Configuración |
+|---|---|---|
+| Frontend | http://localhost:3200 | `FRONTEND_PORT` |
+| API / gateway | http://localhost:8000 | `API_PORT` |
+| Swagger | http://localhost:8000/docs | `API_PORT` |
+| Keycloak | http://localhost:8081 | `KEYCLOAK_PORT` |
+
+El `.env` local puede usar otros puertos (por ejemplo API 18000 y Keycloak 18081).
+Si se cambia el puerto de Keycloak, ajustar también `OIDC_ISSUER`, `KEYCLOAK_URL`
+y `BASE_URL` cuando corresponda. Las APIs no publican puertos hacia el host.
+
+| Cuenta de demostración | Contraseña | Rol |
+|---|---|---|
+| demo@adaii.local | Demo123! | user |
+| segundo@adaii.local | Demo123! | user |
+| admin@adaii.local | AdminDemo123! | admin |
+
+El frontend usa Authorization Code + PKCE. La API valida tokens de Keycloak;
+`POST /auth/login` permanece retirado (410).
+
+Para una instalación previa de Keycloak, el archivo de importación no actualiza un
+realm existente: verificar que el cliente público `andis-frontend` tenga como
+redirect URI `http://localhost:3200/*`, origen `http://localhost:3200` y PKCE S256.
+Actualizar ese cliente en la consola de administración sin borrar su volumen.
 
 ```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\run.ps1
+docker compose ps
+docker compose logs --tail=100
+docker compose down
 ```
 
-Este permiso aplica únicamente a la ventana actual de PowerShell.
+`down` conserva los datos. No agregar `-v` si se quieren preservar los volúmenes.
 
-**Linux/macOS - Bash:**
+## Demos UT4
 
-```bash
-bash run.sh
+| Atributo | Patrón o estrategia | Prueba desde la consola |
+|---|---|---|
+| Disponibilidad | Health Endpoint Monitoring | Estado de réplicas del color que responde y readiness de dependencias. |
+| Disponibilidad | Throttling | Ráfaga con 429 frente a tráfico a ritmo controlado. |
+| Rendimiento | Cache-Aside | HIT/MISS, latencias e invalidación después del commit. |
+| Rendimiento | CQRS | Comandos de compras y proyecciones de lectura y agregación. |
+| Seguridad | Federated Identity | OIDC/PKCE, firma del token, identidad y roles; casos 200/401/403/410. |
+| Seguridad / rendimiento | Gateway Offloading | gzip, estáticos y políticas centralizadas en Nginx. |
+| Facilidad de modificación | External Configuration Store | Editar JSON externo compartido y observar el cambio sin rebuild ni reinicio. |
+| Facilidad de despliegue | Blue/Green | Verificar y promover el otro color manteniendo estable el frontend. |
+
+CQRS separa modelos dentro del mismo backend y MySQL: no implica que existan
+despliegues de lectura y escritura independientes. Las mediciones del navegador
+son demostraciones funcionales, no un benchmark exhaustivo.
+
+## Blue/Green solo del backend
+
+```mermaid
+flowchart LR
+    F[Frontend único :3200] --> G[Gateway Nginx]
+    G -->|un color activo| B[Blue: api1 y api2]
+    G -. promoción .-> V[Green: api-green1 y api-green2]
+    B --> DB[(MySQL)]
+    V --> DB
+    B --> C[config/settings.json]
+    V --> C
 ```
 
-La configuración `.env` se crea automáticamente si no existe. El primer inicio puede tardar varios minutos mientras se descargan y construyen las imágenes.
+Blue usa inicialmente imagen versión 1.0 y Green versión 2.0. `BLUE_VERSION` y
+`GREEN_VERSION` son argumentos de construcción; `API_IMAGE` y `GREEN_IMAGE`
+permiten seleccionar imágenes ya construidas. Cada color tiene dos réplicas.
 
-### Opciones del menú
+En la página **Blue/Green Deployment**, iniciar sesión como admin y elegir
+**Dirigir tráfico a Green** o **Dirigir tráfico a Blue**. El gateway comprueba
+liveness, readiness, color y coincidencia de versión de las dos réplicas destino,
+valida la configuración Nginx, recarga sus workers y verifica una respuesta del
+nuevo color. Si no puede promover, conserva/restaura el upstream anterior.
 
-Los scripts están en `scripts/`, con versiones `.ps1` para PowerShell y `.sh` para Bash.
+El controlador corre dentro del contenedor gateway, en un puerto interno no
+publicado. La API autoriza las acciones con rol admin; no se monta el socket de
+Docker ni se ejecutan comandos arbitrarios desde el navegador.
 
-| Opción | Script | Qué comprueba |
-|---|---|---|
-| 1 - Iniciar entorno | `start` | Construye la imagen, inicia los cinco servicios (db, redis, api1, api2, nginx) y verifica su disponibilidad. |
-| 2 - Ver estado | `status` | Muestra los contenedores y comprueba que el entorno esté listo. |
-| 3 - Demo balanceo | `demo_scaling` | Distribución de solicitudes entre `api1.0` y `api2.0`: escalabilidad horizontal. |
-| 4 - Demo stateless / JWT | `demo_stateless` | Un único JWT funciona en solicitudes atendidas por ambas APIs. |
-| 5 - Demo ACID | `demo_acid` | Compra y Copia se guardan juntas; ante un fallo controlado, ninguna queda persistida. |
-| 6 - Demo tácticas TFU 2 | `demo_tacticas` | Strategy de precios y auditoría compartida y persistente. |
-| 7 - Demo rollback | `demo_rollback` | Una versión defectuosa provoca la recuperación automática de la versión anterior. |
-| 8 - Ver logs | Desde el menú | Muestra los registros recientes de los servicios. |
-| 9 - Detener entorno | `stop` | Detiene y elimina los contenedores, conservando los volúmenes de datos y auditoría. |
-| 0 - Salir | Desde el menú | Cierra el menú sin detener los contenedores. |
+El volumen `gateway_state` conserva el color y el historial de promociones. El
+frontend, MySQL, Redis y Keycloak no se reinician al cambiar de color. Las
+solicitudes que ya estaban en curso pueden terminar en el color anterior.
 
-### Endpoints de consulta
+Alternativa por consola (el acceso Docker del host administra el gateway):
 
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| GET | `/juegos` | Catálogo completo con géneros (cacheado) |
-| GET | `/juegos/{id}` | Detalle de un juego (cacheado) |
-| GET | `/biblioteca` | Biblioteca del usuario autenticado: juegos que posee, con fecha y costo de compra (cacheado) |
-| GET | `/biblioteca/{email}` | Biblioteca de otra persona (cacheado) |
-| GET | `/compras/{email}` | Compras de una persona (cacheado) |
-| GET | `/personas` | Listado de personas |
-| GET | `/personas/{email}` | Detalle de una persona |
-
-### Acceso a la API
-
-- API: http://localhost:8000
-- Swagger: http://localhost:8000/docs
-- Usuario demo: `demo@adaii.local`
-- Contraseña: `Demo123!`
-
-### Frontend de demostración (React)
-
-`frontend/` contiene una consola web (React + Vite) para demostrar cada patrón de la UT4 con pruebas empíricas en vivo. Se levanta junto al resto con `docker compose up -d --build` y queda en **http://localhost:3000**.
-
-| Página | Patrón | Qué se demuestra |
-|---|---|---|
-| Health Endpoint Monitoring | Disponibilidad | Monitoreo en vivo de `/health/live` y `/health/ready`; estado degradado al detener `api2` o `redis` |
-| Throttling | Disponibilidad | Ráfaga concurrente → respuestas 429 del gateway vs. cliente a 8 req/s sin rechazos |
-| Cache-Aside | Rendimiento | Latencia HIT vs MISS por réplica e invalidación tras una escritura |
-| CQRS | Rendimiento | Comandos de compra (POST/PUT/DELETE) y proyecciones de lectura (`/compras`, `/resumen`) |
-| Federated Identity | Seguridad | Login OIDC + PKCE en Keycloak, claims del token y casos 401/403/410 |
-| Gateway Offloading | Seguridad | gzip, estáticos servidos por nginx y reparto de carga |
-| Despliegue con rollback | Despliegue | Versión por réplica en vivo mientras corre `demo_rollback` |
-
-El navegador solo habla con `/api/*` (proxy del contenedor `frontend` hacia el gateway `nginx`) y con Keycloak para el login (cliente público `andis-frontend`).
-
-> Si Keycloak ya se había iniciado antes de agregar el cliente `andis-frontend`, el realm no se reimporta. Recrear solo su volumen:
-> `docker compose rm -sf keycloak; docker volume rm ut4_segrend_keycloak_data; docker compose up -d keycloak`
-
-Desarrollo local con recarga en caliente (requiere el stack corriendo en el puerto 8000):
+```powershell
+.\scripts\promote.ps1 green
+.\scripts\promote.ps1 blue
+python scripts/manage.py demo_blue_green
+```
 
 ```bash
+bash scripts/promote.sh green
+python3 scripts/manage.py demo_blue_green
+```
+
+La demo CLI observa solicitudes durante el cambio, verifica balanceo y vuelve al
+color original. Para probar un rechazo, detener una réplica del color inactivo,
+intentar promoverlo y recuperarla al terminar:
+
+```powershell
+docker compose stop api-green2
+# Intentar promover Green desde la consola; debe rechazarse si Blue está activo.
+docker compose start api-green2
+```
+
+Las dos versiones comparten datos: sus esquemas y formatos de caché deben ser
+compatibles durante la transición. Cambiar de color no revierte operaciones de
+negocio ni migraciones de la base.
+
+## External Configuration Store con JSON
+
+`config/settings.json` se monta como directorio compartido en las cuatro APIs,
+fuera de las imágenes. El archivo no contiene credenciales:
+
+```json
+{
+  "revision": 1,
+  "settings": {
+    "cache_ttl_seconds": 60,
+    "winter_discount_percent": 50,
+    "purchases_enabled": true,
+    "store_notice": "Bienvenido a la tienda de juegos"
+  }
+}
+```
+
+En **External Configuration Store**, admin puede editar `settings` y guardar.
+También se puede editar el documento completo en el host con un editor de texto.
+Las APIs vuelven a leer y validar el JSON al usarlo; el frontend observa los
+cambios cada tres segundos. No es necesario reiniciar ni construir una imagen.
+
+Demostración:
+
+1. Cambiar `winter_discount_percent` de 50 a 30: costo base 100 pasa de 50 a 70.
+2. Ver mismo hash y revisión en las cuatro réplicas con las mismas versiones.
+3. Cambiar `store_notice` y verlo en Tienda.
+4. Poner `purchases_enabled` en false: el backend rechaza nuevas compras (503).
+5. Editar `cache_ttl_seconds`: las nuevas entradas usan ese TTL; las existentes
+   mantienen su vencimiento previo.
+
+Se validan tipos y rangos, se rechazan campos desconocidos y las actualizaciones
+desde la API usan reemplazo atómico, lock compartido y control de concurrencia por
+hash (409 ante una edición desactualizada). La revisión se incrementa al guardar
+desde la API. Las modificaciones manuales se detectan por hash aunque no cambien
+la revisión. Ante un archivo inválido cada proceso conserva su última lectura
+válida y expone una advertencia; sin una lectura previa válida responde 503.
+
+```powershell
+notepad .\config\settings.json
+python scripts/manage.py demo_configuration
+```
+
+La demo CLI cambia temporalmente el descuento y restaura exactamente el archivo.
+Un JSON montado es adecuado para esta demo en un único host; su disponibilidad y
+el control de escritura dependen del sistema de archivos compartido.
+
+## Demos antiguas
+
+El menú del frontend contiene una sección desplegable **Demos antiguas**:
+
+| Unidad | Demos |
+|---|---|
+| UT2 · Tácticas | Strategy y auditoría; rollback de imagen defectuosa. |
+| UT3 · Soluciones | Componentes e interfaces / contenedores; escalabilidad horizontal; servicios sin estado; transacciones ACID. |
+
+La clasificación sigue las propuestas de UT2 (tácticas) y UT3 (componentes,
+escalabilidad, contenedores, ACID y stateless). El código heredado se adapta a la
+identidad federada de UT4; no se reactiva el login local.
+
+- Strategy y auditoría: compara políticas y genera/consulta una operación auditada.
+- Escalabilidad y stateless: diez solicitudes reales entre réplicas del color activo.
+- ACID: crea datos temporales, verifica commit y rollback desde otra sesión MySQL y
+  limpia los datos de prueba. Requiere admin desde el navegador.
+- Rollback histórico: ejecuta `.\scripts\demo_rollback.ps1` o
+  `bash scripts/demo_rollback.sh` en una terminal. Reemplaza Blue con una imagen
+  defectuosa y restaura la anterior; puede interrumpir temporalmente la API.
+  Ejecutarlo separado de Blue/Green. Registra `deployment_logs/deployment.log`.
+
+Referencias de la evolución:
+[UT3](https://github.com/FacundoPiriz17/UT3_TFU_ANDIS2) y
+[UT2](https://github.com/ThiagoAGarcia/adaII-UT2).
+
+Los launchers `run.ps1` / `run.sh` también separan las demos actuales de las antiguas.
+Los scripts CLI heredados que necesitan sesión aceptan `DEMO_ACCESS_TOKEN` con un
+token vigente; las demos del frontend gestionan la sesión mediante Keycloak.
+
+## Desarrollo y validación
+
+```powershell
 cd frontend
 npm install
-npm run dev   # http://localhost:5173
+$env:GATEWAY_URL="http://localhost:18000"
+$env:VITE_KEYCLOAK_URL="http://localhost:18081"
+npm run dev
 ```
 
----
+Vite queda en http://localhost:5173. Para los puertos predeterminados usar 8000 y
+8081. El frontend de Compose permanece en 3200.
 
-## 6. Estructura del repositorio
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q tests
+docker compose config --quiet
+```
 
-```
-UT3_TFU_ANDIS2/
-├── app/
-│   ├── main.py              # App FastAPI + montaje de routers
-│   ├── database.py          # Motor SQLAlchemy / get_db
-│   ├── models.py            # Modelos ORM (Persona, Juego, Compra, ...)
-│   ├── schemas.py           # Schemas Pydantic de entrada/salida
-│   ├── aspects/audit.py     # Decorador @auditar
-│   ├── routers/             # auth, personas, juegos, compras, audit
-│   ├── services/compras.py  # Lógica de negocio de compras
-│   └── strategies/costo_compra.py  # Strategy de costo
-├── bd/                      # schema.sql + seed.sql
-├── security/                # jwt.py, password.py, dependencies.py
-├── postman/                 # Colección y entorno de pruebas
-├── scripts/                 # Deploy, versionado, demos
-├── docker-compose.yaml      # Despliegue: nginx + api1 + api2 + db
-├── docker-compose.dev.yaml  # Desarrollo: web + db
-├── dockerfile               # Imagen Python 3.12 / FastAPI
-└── nginx.conf               # Balanceador upstream api1/api2
-```
+Las pruebas cubren recarga del archivo, validación, concurrencia y protección de
+la promoción ante destinos inválidos y errores de configuración Nginx.
+
+Los diagramas UML de componentes originales se conservan en `docs/diagramas/`.
+La partición es un backend modular replicado; contenerizar sus dependencias no lo
+convierte en microservicios por dominio.

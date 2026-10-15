@@ -6,12 +6,12 @@ from typing import Any, Callable
 import redis
 from fastapi import Response
 from fastapi.encoders import jsonable_encoder
+from app.configuration import store
 
 logger = logging.getLogger(__name__)
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-CACHE_TTL = int(os.getenv("CACHE_TTL", "60"))
 
 _cliente = redis.Redis(
     host=REDIS_HOST,
@@ -53,9 +53,9 @@ def obtener(clave: str) -> Any | None:
     return json.loads(valor) if valor is not None else None
 
 
-def guardar(clave: str, valor: Any, ttl: int = CACHE_TTL) -> None:
+def guardar(clave: str, valor: Any, ttl: int | None = None) -> None:
     try:
-        _cliente.set(clave, json.dumps(valor), ex=ttl)
+        _cliente.set(clave, json.dumps(valor), ex=ttl if ttl is not None else store.settings().cache_ttl_seconds)
     except redis.RedisError:
         logger.warning("No se pudo guardar en cache: %s", clave)
 
@@ -73,7 +73,7 @@ def obtener_o_cargar(
     clave: str,
     cargar: Callable[[], Any],
     response: Response | None = None,
-    ttl: int = CACHE_TTL,
+    ttl: int | None = None,
 ) -> Any:
     valor = obtener(clave)
 

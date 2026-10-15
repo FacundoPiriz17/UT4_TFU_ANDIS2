@@ -3,7 +3,8 @@ export const GRUPOS = {
   disponibilidad: { nombre: 'Disponibilidad', color: 'green' },
   rendimiento: { nombre: 'Rendimiento', color: 'blue' },
   seguridad: { nombre: 'Seguridad', color: 'violet' },
-  despliegue: { nombre: 'Modificabilidad y despliegue', color: 'amber' },
+  despliegue: { nombre: 'Facilidad de despliegue', color: 'amber' },
+  modificabilidad: { nombre: 'Facilidad de modificación', color: 'blue' },
 };
 
 export const PATRONES = [
@@ -51,10 +52,17 @@ export const PATRONES = [
   },
   {
     id: 'deploy',
-    nombre: 'Despliegue con rollback',
+    nombre: 'Blue/Green Deployment',
     grupo: 'despliegue',
-    resumen: 'Imágenes versionadas; si la nueva versión no pasa el health check, se vuelve automáticamente a la anterior.',
-    archivos: ['scripts/manage.py (deploy / rollback_demo)', 'dockerfile (FORCE_UNHEALTHY)'],
+    resumen: 'Dos versiones del backend conviven. Se verifica el destino y Nginx cambia el tráfico sin reconstruir el frontend.',
+    archivos: ['docker-compose.yaml', 'nginx/control.py', 'app/routers/deployment.py'],
+  },
+  {
+    id: 'configuration',
+    nombre: 'External Configuration Store',
+    grupo: 'modificabilidad',
+    resumen: 'Un JSON compartido cambia descuentos, compras y TTL en todas las réplicas sin recompilar ni reiniciar.',
+    archivos: ['config/settings.json', 'app/configuration.py', 'app/routers/configuration.py'],
   },
 ];
 

@@ -9,7 +9,16 @@ const NAV_GENERAL = [
   { id: 'tienda', nombre: 'Tienda de juegos', icono: '🎮' },
 ];
 
-const ICONOS = { health: '♥', throttling: '⏱', cache: '⚡', cqrs: '⇄', identity: '🔑', offloading: '🛡', deploy: '🚀' };
+const ICONOS = { health: '♥', throttling: '⏱', cache: '⚡', cqrs: '⇄', identity: '🔑', offloading: '🛡', deploy: '🚀', configuration: '⚙' };
+const ANTIGUAS = [
+  { unidad: 'UT2 · Tácticas', items: [
+    ['ut2-tacticas', 'Strategy y auditoría'], ['ut2-rollback', 'Rollback'],
+  ] },
+  { unidad: 'UT3 · Soluciones', items: [
+    ['ut3-componentes', 'Componentes y contenedores'], ['ut3-balanceo', 'Escalabilidad horizontal'],
+    ['ut3-stateless', 'Servicios sin estado'], ['ut3-acid', 'Transacciones ACID'],
+  ] },
+];
 
 function EstadoGateway() {
   const [estado, setEstado] = useState(null);
@@ -89,6 +98,17 @@ export default function Layout({ ruta, children }) {
               ))}
             </div>
           ))}
+          <details className="legacy-nav" open={ruta.startsWith('ut') || undefined}>
+            <summary className="nav-section">Demos antiguas</summary>
+            {ANTIGUAS.map((grupo) => (
+              <details key={grupo.unidad} open={grupo.items.some(([id]) => id === ruta) || undefined}>
+                <summary className="nav-section">{grupo.unidad}</summary>
+                {grupo.items.map(([id, nombre]) => (
+                  <a key={id} href={`#/${id}`} className={`nav-item ${ruta === id ? 'active' : ''}`}>{nombre}</a>
+                ))}
+              </details>
+            ))}
+          </details>
         </nav>
       </aside>
       {menu && <div className="scrim" onClick={() => setMenu(false)} />}

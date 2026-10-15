@@ -76,6 +76,8 @@ export async function api(path, { method = 'GET', body, auth = true, silencioso 
     ms,
     headers: res.headers,
     instancia: res.headers.get('X-Instance-ID'),
+    slot: res.headers.get('X-Deployment-Slot'),
+    version: res.headers.get('X-API-Version'),
     cache: res.headers.get('X-Cache'),
     url,
   };
@@ -87,6 +89,8 @@ export async function api(path, { method = 'GET', body, auth = true, silencioso 
       status: res.status,
       ms,
       instancia: resultado.instancia,
+      slot: resultado.slot,
+      version: resultado.version,
       cache: resultado.cache,
       etiqueta,
     });

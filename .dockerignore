@@ -46,3 +46,4 @@ deployment_logs/
 
 # Frontend (tiene su propia imagen)
 frontend/
+config/

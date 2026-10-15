@@ -1,113 +1,118 @@
-import { useEffect, useRef, useState } from 'react';
-import { api } from '../lib/api';
-import { Boton, Card, Comando, ComoFunciona, EncabezadoPatron, Estado } from '../components/ui';
+import { useEffect, useState } from 'react';
+import { api, mensajeError } from '../lib/api';
+import { useSesion } from '../lib/auth';
+import { Aviso, Boton, Card, Comando, ComoFunciona, EncabezadoPatron, Estado } from '../components/ui';
 
 export default function Despliegue() {
-  const [instancias, setInstancias] = useState([]);
-  const [eventos, setEventos] = useState([]);
-  const [activo, setActivo] = useState(true);
-  const previo = useRef({});
+  const session = useSesion();
+  const admin = session?.roles.includes('admin');
+  const [state, setState] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [traffic, setTraffic] = useState([]);
+  const [monitor, setMonitor] = useState(true);
 
   useEffect(() => {
-    if (!activo) return undefined;
-    let vivo = true;
-    const consultar = async () => {
-      const r = await api('/health/live', { auth: false, silencioso: true });
-      if (!vivo) return;
-      const lista = r.ok ? r.data.instancias : [{ host: 'gateway', status: 'down' }];
-      setInstancias(lista);
-      const nuevos = [];
-      for (const i of lista) {
-        const firma = `${i.status}|${i.version ?? '—'}`;
-        if (previo.current[i.host] !== firma) {
-          if (previo.current[i.host] !== undefined) {
-            nuevos.push({ t: new Date(), host: i.host, status: i.status, version: i.version });
-          }
-          previo.current[i.host] = firma;
-        }
-      }
-      if (nuevos.length) setEventos((e) => [...nuevos, ...e].slice(0, 30));
+    let alive = true;
+    let polling = false;
+    const read = async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        const [status, request] = await Promise.all([
+          api('/deployment/status', { auth: false, silencioso: true }),
+          api('/instance', { auth: false, silencioso: true }),
+        ]);
+        if (!alive) return;
+        if (status.ok) setState(status.data);
+        else setMessage({ tipo: 'err', text: mensajeError(status) });
+        setTraffic((rows) => [{ at: new Date(), status: request.status, ms: request.ms,
+          ...request.data }, ...rows].slice(0, 60));
+      } finally { polling = false; }
     };
-    consultar();
-    const t = setInterval(consultar, 1500);
-    return () => { vivo = false; clearInterval(t); };
-  }, [activo]);
+    read();
+    const timer = monitor ? setInterval(read, 2000) : null;
+    return () => { alive = false; clearInterval(timer); };
+  }, [monitor]);
+
+  const promote = async (slot) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await api(`/deployment/promote/${slot}`, { method: 'POST' });
+      setMessage({ tipo: response.ok ? 'ok' : 'err', text: response.ok
+        ? `Tráfico dirigido a ${slot}. El frontend y los datos siguen disponibles.` : mensajeError(response) });
+      const result = await api('/deployment/status', { auth: false, silencioso: true });
+      if (result.ok) setState(result.data);
+    } catch (error) { setMessage({ tipo: 'err', text: error.message }); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="page">
       <EncabezadoPatron id="deploy" atributo="Facilidad de despliegue">
-        Cada versión se construye como una imagen inmutable etiquetada (<code>api:1.0</code>, <code>api:2.0</code>…). El despliegue
-        reemplaza las réplicas por la nueva imagen y espera sus health checks; si la versión nueva no queda sana, se vuelve
-        automáticamente a la imagen anterior, que se conserva. La base de datos no se recrea.
+        Blue y Green mantienen dos versiones del backend en paralelo. Antes de promover un color se verifican sus dos réplicas.
+        Nginx cambia el tráfico mediante una recarga; el frontend se mantiene en el puerto 3200.
       </EncabezadoPatron>
-
       <div className="toolbar">
-        <Boton variante={activo ? 'ghost' : 'primary'} onClick={() => setActivo((v) => !v)}>
-          {activo ? '❚❚ Pausar observación' : '▶ Observar despliegue'}
-        </Boton>
-        <span className="muted small">Consulta /health/live cada 1,5 s y registra cada cambio de versión o estado.</span>
+        <span className="tag tag-amber">Color activo: {state?.active_slot ?? 'consultando…'}</span>
+        <Boton variante="ghost" onClick={() => setMonitor((v) => !v)}>{monitor ? 'Pausar monitoreo' : 'Reanudar monitoreo'}</Boton>
+        <span className="muted small">Las dos versiones comparten MySQL, Redis, Keycloak y el JSON de configuración.</span>
       </div>
-
+      {message && <Aviso tipo={message.tipo}>{message.text}</Aviso>}
       <div className="grid grid-2">
-        <Card titulo="Versión en cada réplica">
-          <div className="replicas">
-            {instancias.map((i) => (
-              <div key={i.host} className={`replica replica-${i.status}`}>
-                <div className="replica-host mono">{i.host}</div>
-                <div className="replica-version">{i.version ? `v${i.version}` : '—'}</div>
-                <Estado valor={i.status} />
-              </div>
-            ))}
-          </div>
-        </Card>
-        <Card titulo="Eventos detectados" subtitulo="Cambios de versión / estado durante la observación">
-          {eventos.length === 0 ? (
-            <div className="empty">Sin cambios todavía. Ejecutá un deploy o la demo de rollback.</div>
-          ) : (
-            <ul className="events">
-              {eventos.map((e, i) => (
-                <li key={i}>
-                  <span className="mono muted">{e.t.toLocaleTimeString()}</span>
-                  <span className="mono">{e.host}</span>
-                  <Estado valor={e.status} />
-                  <span className="mono">{e.version ? `v${e.version}` : ''}</span>
-                </li>
+        {['blue', 'green'].map((slot) => (
+          <Card key={slot} className={`slot-card slot-${slot} ${state?.active_slot === slot ? 'slot-active' : ''}`}
+            titulo={slot === 'blue' ? 'Blue' : 'Green'} subtitulo={state?.active_slot === slot ? 'Atiende el tráfico del gateway' : 'Disponible para verificar y promover'}>
+            <div className="replicas">
+              {(state?.slots?.[slot] ?? []).map((instance) => (
+                <div key={instance.host} className={`replica replica-${instance.status}`}>
+                  <b className="mono">{instance.instance ?? instance.host}</b>
+                  <div className="replica-version">{instance.version ? `v${instance.version}` : '—'}</div>
+                  <Estado valor={instance.status} />
+                </div>
               ))}
-            </ul>
-          )}
+            </div>
+            <Boton onClick={() => promote(slot)} cargando={busy} disabled={!admin || state?.active_slot === slot || !state}>
+              Dirigir tráfico a {slot === 'blue' ? 'Blue' : 'Green'}
+            </Boton>
+          </Card>
+        ))}
+      </div>
+      {!admin && <Aviso>Iniciá sesión como administrador para cambiar el color. El monitoreo está disponible sin sesión.</Aviso>}
+      <div className="grid grid-2">
+        <Card titulo="Solicitudes durante el cambio" subtitulo="GET /instance cada 2 s; una respuesta real por muestra">
+          <div className="table-scroll"><table className="table">
+            <thead><tr><th>Hora</th><th>Estado</th><th>Color</th><th>Versión / réplica</th><th>ms</th></tr></thead>
+            <tbody>{traffic.slice(0, 15).map((row, i) => <tr key={i}>
+              <td>{row.at.toLocaleTimeString()}</td><td>{row.status}</td><td>{row.slot ?? '—'}</td>
+              <td className="mono">{row.version ?? '—'} · {row.instance ?? 'sin respuesta'}</td><td>{row.ms}</td>
+            </tr>)}</tbody>
+          </table></div>
+          <p className="muted small">Las muestras ayudan a observar continuidad; la prueba por script envía más solicitudes durante la promoción.</p>
+        </Card>
+        <Card titulo="Historial de promociones" subtitulo="Persistido por el gateway, incluso si se recarga Nginx">
+          {!state?.events?.length && <div className="empty">Todavía no se cambió el color.</div>}
+          <ul className="events">{state?.events?.map((event, i) => <li key={i}>
+            <span>{new Date(event.at).toLocaleTimeString()}</span><b>{event.from} → {event.to}</b>
+            <span>v{event.version}</span><small className="muted">{event.actor}</small>
+          </li>)}</ul>
         </Card>
       </div>
-
       <div className="grid grid-2">
-        <Card titulo="Flujo de despliegue">
-          <div className="pipeline">
-            {[
-              ['Build', 'imagen api:X con API_VERSION'],
-              ['Verificar', 'la versión actual está sana'],
-              ['Reemplazar', 'api1 y api2 con la nueva imagen'],
-              ['Health check', '/health de cada réplica'],
-              ['Confirmar', 'o rollback a la imagen previa'],
-            ].map(([t, d], i) => (
-              <div key={t} className="pipe-step">
-                <span className="pipe-n">{i + 1}</span>
-                <b>{t}</b>
-                <span className="muted small">{d}</span>
-              </div>
-            ))}
-          </div>
+        <Card titulo="Cómo comprobar la facilidad de despliegue">
           <ComoFunciona items={[
-            'Las imágenes versionadas hacen los despliegues reproducibles y reversibles: volver atrás es cambiar la etiqueta.',
-            'El health check es la puerta de calidad: una versión que no responde /health no queda en producción.',
-            <>Con <code>FORCE_UNHEALTHY=true</code> se fabrica una versión defectuosa para comprobar el rollback de forma controlada.</>,
+            'Observar Blue activo y Green sano con otra versión; promover Green y ver cambiar las respuestas.',
+            'Volver a Blue sin reconstruir imágenes ni reiniciar el frontend.',
+            'Detener una réplica del color inactivo e intentar promoverlo: la operación se rechaza y el color activo se conserva.',
+            'Mantener los esquemas de datos y formatos de caché compatibles con las dos versiones durante la transición.',
           ]} />
         </Card>
-        <Card titulo="Prueba empírica" subtitulo="Con este panel abierto, en otra terminal">
-          <p className="small">Demo completa: construye <code>2.0-broken</code>, la despliega, detecta el fallo y restaura la versión anterior.</p>
-          <Comando>.\scripts\demo_rollback.ps1</Comando>
-          <Comando>bash scripts/demo_rollback.sh</Comando>
-          <p className="small">Despliegue de una versión sana:</p>
-          <Comando>.\scripts\build_version.ps1 2.0; .\scripts\deploy.ps1 2.0</Comando>
-          <p className="small muted">El historial de despliegues queda en <code>deployment_logs/deployment.log</code>.</p>
+        <Card titulo="Alternativa por terminal">
+          <Comando>.\scripts\promote.ps1 green</Comando>
+          <Comando>.\scripts\promote.ps1 blue</Comando>
+          <Comando>python scripts/manage.py demo_blue_green</Comando>
+          <p className="muted small">El rollback de reemplazo de imagen de la TFU anterior está en Demos antiguas → UT2.</p>
         </Card>
       </div>
     </div>
