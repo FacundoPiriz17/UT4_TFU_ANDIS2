@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app import cache
+from app.configuration import store
 from app.models import Compra, Copia, Juego, Persona
 from app.strategies.costo_compra import obtener_estrategia
 
@@ -28,6 +29,8 @@ def crear_compra(
     costo_base: int,
     politica: str,
 ) -> Compra:
+    if not store.settings().purchases_enabled:
+        raise HTTPException(503, "Las compras están pausadas por configuración")
     if db.get(Persona, email_persona) is None:
         raise HTTPException(
             status_code=404,

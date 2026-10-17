@@ -89,3 +89,7 @@ Desktop.ini
 
 # Linux
 .directory
+
+# Frontend
+node_modules/
+config/*.lock

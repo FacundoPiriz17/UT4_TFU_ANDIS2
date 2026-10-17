@@ -43,3 +43,7 @@ Thumbs.db
 .deploy/
 deployment_logs/
 .venv/
+
+# Frontend (tiene su propia imagen)
+frontend/
+config/

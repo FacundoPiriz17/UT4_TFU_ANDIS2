@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from app.configuration import store
 
 
 class EstrategiaCostoCompra(ABC):
@@ -14,7 +15,8 @@ class CostoNormal(EstrategiaCostoCompra):
 
 class DescuentoInvierno(EstrategiaCostoCompra):
     def calcular(self, costo_base: int) -> int:
-        return round(costo_base * 0.50)
+        descuento = store.settings().winter_discount_percent
+        return round(costo_base * (100 - descuento) / 100)
 
 
 _ESTRATEGIAS: dict[str, EstrategiaCostoCompra] = {
