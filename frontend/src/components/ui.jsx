@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import DiagramaPatron from './DiagramaPatron';
 import { GRUPOS, patron } from '../lib/patrones';
 import { iniciarLogin, useSesion } from '../lib/auth';
 
@@ -39,6 +40,7 @@ export function EncabezadoPatron({ id, atributo, children }) {
           <code key={a} className="file-chip">{a}</code>
         ))}
       </div>
+      <DiagramaPatron id={id} nombre={p.nombre} />
     </header>
   );
 }
